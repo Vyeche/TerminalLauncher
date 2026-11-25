@@ -19,6 +19,32 @@ with it or look after it: it's just there, and it does little things.
   something opens, a nod when a dragged row lands, an ear twitch when you unstar one. The one-time
   tips come from the cat too (they start with *Psst*).
 
+## Watching your kitty tabs
+In **My kitty window** mode, Byte keeps an eye on the kitty window the launcher opened and says what
+happened:
+
+| What happens | Byte says (for example) |
+| --- | --- |
+| A build, test or install starts | *npm run build is running in API server. I'll keep an eye on it.* |
+| It finishes after 20 seconds or more | *✓ npm run build finished in API server (2 min 05 s).* (and a soft "done") |
+| A command fails | *✗ cargo test failed in API server (exit 101). You've got this.* (and a soft "oops") |
+| You mistype a command | *gti isn't a command here. A typo?* |
+| The command that failed works next time | *Fixed it! cargo test works now in API server.* |
+| A `git push` works | *Pushed from API server. Off it goes!* |
+| Claude, omp or opencode exits | *Claude in Website redesign is done. It might want you.* |
+
+Quick everyday commands (`ls`, `cd`...) don't get a comment, and small things wait if Byte spoke a
+moment ago.
+
+How: every 2 seconds the launcher asks its own kitty window (the remote-control socket it opened it
+with, read-only `kitty @ ls`) whether each tab's shell is at its prompt, the last command line and
+how it ended, and which program is in front. kitty knows these through its shell integration, which
+is on by default for bash, zsh and fish. Byte names a tab after the list entry whose folder it's in,
+else after the folder. It shows only a command's name and subcommand (`npm test`, `git push`), never
+the rest of the line, keeps nothing, and never sends anything anywhere. Other kitty windows, GNOME
+Terminal and COSMIC Terminal aren't watched (they can't be asked). **☰ → Byte watches my kitty tabs**
+turns it off; `--dry-run` never watches.
+
 The words, jokes and tips are built into the launcher: it never goes online. That's also why it
 doesn't show the weather.
 

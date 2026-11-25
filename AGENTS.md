@@ -61,6 +61,10 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
   chime). "Did you know" lines must be things anyone can check in a shell or the app; jokes are
   original. No badge rewards turning on start at login. Its timers stop when it's hidden, and its
   clock (`Cat.now`) is pinned in tests. Every control has a tooltip; the cat has an accessible label.
+- **Byte watching kitty** (`parse_kitty_ls`, `watch_events`, `short_cmd`): read-only `kitty @ ls` on the
+  launcher's own socket only; keep only prompt state, the short command (program + subcommand, never
+  arguments), exit status, the foreground agent and a tab name (list entry or folder, never kitty's
+  automatic title, which holds the whole command line). Never read `env`. Off with `--dry-run`.
 - New agent types go in `KINDS` and `AGENTS` (label, new-session command, resume command). The
   "recent sessions" picker reads only Claude Code's history; don't guess at other agents' stores.
 

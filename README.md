@@ -94,6 +94,11 @@ just keeps you company:
   for the next one (it says *mrrp?*).
 - It **reacts** when you do things: a hop and a blush for a new favorite, a wave when something
   opens, a nod when a dragged row lands. The tips above come from the cat, too.
+- **It watches your kitty tabs** (in **My kitty window** mode) and comments: a long build or test
+  starting and finishing (with how long it took), a command that failed (and its exit code), a typo
+  ("gti isn't a command here"), the same command working after it failed ("Fixed it!"), a `git push`,
+  or Claude, omp or opencode being done in a tab. It asks only the launcher's own kitty window,
+  read-only, and shows only a command's name, like `npm test`, never its arguments.
 - **Badges:** twelve little quests to find, like your first star, opening 25 terminals, opening one
   before 7 in the morning or after 11 at night, trying all three **Open in** choices, and one secret.
   Earning one plays a small sparkle and the cat cheers. **🏅** next to the cat (or **☰ → Badges…**)
@@ -103,7 +108,8 @@ just keeps you company:
 
 ![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](docs/images/badges.png)
 
-**☰ → Byte the cat** hides it (its timers stop too). It never goes online; the words, jokes and tips
+**☰ → Byte the cat** hides it (its timers stop too), and **☰ → Byte watches my kitty tabs** turns
+the watching off. It never goes online; the words, jokes and tips
 are built in. No weather, for that reason.
 
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)

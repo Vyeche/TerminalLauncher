@@ -7,6 +7,9 @@ launcher (see [Installing](Installing#updating)).
 - **Byte the cat:** a little ginger cat at the bottom of the window blinks, winks, naps at night,
   reacts to what you do, and says something now and then: the date, a word of the day, a joke, a
   shell tip. Click it for the next one. See [Byte the cat and badges](Byte-the-Cat).
+- **Byte watches your kitty tabs:** in **My kitty window** mode it comments when a long build or
+  test finishes, a command fails or gets fixed, you mistype one, a `git push` works, or an agent is
+  done. Command names only, never their arguments. **☰** turns it off.
 - **Badges:** twelve little quests (your first star, 25 opens, an early-bird open, trying every
   **Open in** choice, a secret...). **🏅** next to the cat shows them.
 - A new [48-second tour on YouTube](https://youtube.com/shorts/3tdUWFhMW3Y), with sound.

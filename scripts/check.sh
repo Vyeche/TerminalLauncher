@@ -86,6 +86,56 @@ check "--all-windows --dry-run exits 0" python3 "$APP" --all-windows --dry-run
 [ "$(python3 "$APP" --sounds --dry-run | grep -c '\.wav$')" -ge 5 ] && [ ! -s "$T/played.log" ] \
   && ok "--sounds --dry-run makes the sound files and plays nothing" || bad "--sounds --dry-run"
 
+echo "Byte watching kitty (from made-up kitty @ ls data; no kitty is asked)"
+python3 - "$APP" <<'EOF' && ok "command names only, env never read; finished, failed, typo, fixed, push, agent done" || bad "watching kitty"
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("tl", sys.argv[1]); tl = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tl)
+sc = tl.short_cmd
+assert sc("npm run build -- --watch") == "npm run build", sc("npm run build -- --watch")
+assert sc("sudo apt upgrade -y") == "apt upgrade" and sc("FOO=bar git push origin main") == "git push"
+assert sc("curl -H 'X-Note: hello' https://example.org") == "curl" and sc("/usr/bin/make test") == "make test"
+assert sc("cargo build --release") == "cargo build" and sc("") == "" and sc("echo 'unclosed") == "echo"
+assert sc("sleep 4; make test") == "make test" and sc("cd app && npm test | tee log") == "npm test", sc("sleep 4; make test")
+class Boom(dict):
+    def __getitem__(self, k): raise AssertionError("read env")
+    def get(self, *a): raise AssertionError("read env")
+def ls(prompt, cmd, status, fg="bash", title="API server"):
+    return [{"tabs": [{"title": title, "title_overridden": True, "windows": [{"id": 7, "at_prompt": prompt, "last_reported_cmdline": cmd,
+             "last_cmd_exit_status": status, "env": Boom(), "foreground_processes": [{"cmdline": [fg, "x"]}]}]}]}]
+P = tl.parse_kitty_ls
+def run(*steps):
+    """steps: (seconds, kitty ls data); returns every event text, in order"""
+    out, prev = [], None
+    for t, data in steps:
+        snap = P(data)
+        if prev is not None:
+            out += [e[2] for e in tl.watch_events(prev, snap, t)]
+        else:
+            tl.watch_events({}, snap, t)
+        prev = snap
+    return out
+idle = ls(True, "ls", 0)
+ev = run((0, idle), (2, ls(False, "npm run build", 0)), (40, ls(True, "npm run build", 0)))
+assert ev[0].startswith("npm run build is running in API server") and ev[1] == "✓ npm run build finished in API server (38 s).", ev
+ev = run((0, idle), (2, ls(False, "cargo test", 0)), (9, ls(True, "cargo test", 101)),
+         (12, ls(False, "cargo test", 0)), (30, ls(True, "cargo test", 0)))
+assert any("✗ cargo test failed in API server (exit 101)" in e for e in ev) and ev[-1] == "Fixed it! cargo test works now in API server.", ev
+assert run((0, idle), (2, ls(False, "gti status", 0)), (3, ls(True, "gti status", 127))) == ["gti isn't a command here. A typo?"]
+assert run((0, idle), (2, ls(False, "git push origin main", 0)), (5, ls(True, "git push origin main", 0)))[-1] == "Pushed from API server. Off it goes!"
+assert run((0, idle), (2, ls(False, "ls -la", 0)), (3, ls(True, "ls -la", 0))) == [], "quick commands stay quiet"
+assert run((0, idle), (2, ls(True, "gti status", 127))) == ["gti isn't a command here. A typo?"], "missed a quick typo"
+assert run((0, idle), (2, ls(True, "git push", 0)))[-1] == "Pushed from API server. Off it goes!"
+assert run((0, ls(True, "make", 0)), (2, ls(True, "make", 0))) == [], "nothing new, nothing said"
+ev = run((0, ls(False, "claude --resume x", None, fg="claude")), (60, ls(True, "claude --resume x", 0)))
+assert ev == ["Claude in API server is done. It might want you."], ev
+assert P("not json") == {} and P([{"tabs": [{"windows": [{}]}]}])[None]["tab"] == "a tab"
+win = lambda title, over, cwd: [{"tabs": [{"title": title, "title_overridden": over, "windows": [{"id": 1, "cwd": cwd}]}]}]
+assert P(win("make test SECRET=1", False, "/srv/web-site"))[1]["tab"] == "web-site", "used kitty's automatic title"
+assert P(win("x", False, "/srv/web-site"), {"/srv/web-site": "Website redesign"})[1]["tab"] == "Website redesign"
+assert P(win("Docs site", True, "/srv/docs"))[1]["tab"] == "Docs site"
+EOF
+
 echo "Login entry (save_sessions keeps the autostart file in step)"
 python3 - "$APP" <<'EOF' && ok "created while marked, removed when none is" || bad "autostart file out of step"
 import importlib.util, sys
@@ -278,6 +328,21 @@ def act(app):
         w._tip("drag-star", "x"); w._set_star(w.sessions[-1])   # with the cat hidden: toasts, no errors
         assert tl.load_settings()["cat"] is False
         w._show_badges()
+        # Watching kitty: snapshots handed to the window make Byte comment (and play done/oops)
+        w.lookup_action("cat").change_state(GLib.Variant("b", True)); w.cat.stop()
+        w.lookup_action("sounds").change_state(GLib.Variant("b", True))   # turned off further up
+        assert w._watch_timer == 0 or w.watch_on
+        snap = lambda prompt, status: {7: {"tab": "API server", "prompt": prompt, "cmd": "make test",
+                                           "status": status, "agent": None}}
+        w._watch_apply(snap(True, 0)); w._watch_apply(snap(False, 0))
+        w._watch_said = 0; w._watch_prev[7]["since"] = time.monotonic() - 30
+        w._watch_apply(snap(True, 2))
+        assert w.cat.label.get_label() == "✗ make test failed in API server (exit 2). You've got this.", w.cat.label.get_label()
+        assert heard("oops"), "no oops sound"
+        w._watch_apply(None)
+        assert w._watch_prev is None and w._watch_skip == 4, "no back-off when kitty isn't there"
+        w.lookup_action("watch").change_state(GLib.Variant("b", False))
+        assert tl.load_settings()["watch"] is False and w._watch_tick() is True and not w._watch_busy
 
         EditDialog = tl.EditDialog(w, None, lambda e: None)
         EditDialog.destroy()

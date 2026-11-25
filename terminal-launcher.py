@@ -460,6 +460,8 @@ SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1[, g
     "badge": [(0.0, 1047, 0.12, 0.6), (0.06, 1319, 0.12, 0.55), (0.12, 1568, 0.14, 0.5),
               (0.18, 2093, 0.35, 0.45)],                                             # a C-major sparkle
     "chirp": [(0.0, 700, 0.16, 0.8, 1050)],                                          # the cat: "mrrp?"
+    "done": [(0.0, 659, 0.12, 0.7), (0.08, 988, 0.26, 0.6)],                       # E5 → B5: it worked
+    "oops": [(0.0, 392, 0.14, 0.7), (0.09, 330, 0.24, 0.6)],                       # G4 → E4: it didn't
 }
 
 
@@ -682,6 +684,127 @@ def cat_line(kind, now, extra=None):
     if kind == "joke":
         return CAT_JOKES[(day * 7) % len(CAT_JOKES)]
     return f"Did you know? {CAT_TIPS[(day * 5 + (extra or 0)) % len(CAT_TIPS)]}"
+
+
+# ---------- Byte watches the launcher's kitty window ----------
+# Every 2 seconds the window asks the launcher's own kitty window (its remote-control socket,
+# read-only `kitty @ ls`) what each tab is doing, and Byte comments on what changed: a long build
+# finishing, a command failing, a coding agent being done, a git push. It reads only whether the
+# shell is at its prompt, the last command line, its exit status, the program in front and the tab
+# title (kitty's shell integration reports these). It shows only a command's name and subcommand,
+# never its arguments, and keeps nothing. Other terminals can't be asked, so this is kitty only.
+AGENT_NAMES = {"claude": "Claude", "omp": "omp", "opencode": "opencode"}
+WATCH_SUBCOMMANDS = {"git", "npm", "pnpm", "yarn", "bun", "cargo", "go", "make", "docker", "podman", "kubectl",
+                     "pip", "uv", "poetry", "dotnet", "mvn", "gradle", "apt", "dnf", "flatpak", "systemctl", "just"}
+WATCH_BUSY = ("build", "test", "install", "deploy", "compile", "check", "lint", "push", "pull", "update",
+              "upgrade", "sync", "bundle", "release")
+
+
+def short_cmd(cmdline):
+    """'npm run build -- --watch' → 'npm run build'; 'sudo apt upgrade -y' → 'apt upgrade';
+    'cd app && make test | tee log' → 'make test' (the last command of a chain, the first of a pipe).
+    Only the program and its subcommand words: arguments (paths, values, maybe secrets) are never shown."""
+    try:
+        lex = shlex.shlex(cmdline or "", posix=True, punctuation_chars=";&|")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        tokens = (cmdline or "").split()
+    chain = [[]]
+    for t in tokens:
+        if t in (";", "&&", "||", "&"):
+            chain.append([])
+        else:
+            chain[-1].append(t)
+    words = next((c for c in reversed(chain) if c), [])
+    if "|" in words:
+        words = words[:words.index("|")]
+    while words and (words[0] in ("sudo", "env", "time", "nice", "command", "exec") or "=" in words[0]):
+        words = words[1:]
+    if not words:
+        return ""
+    prog = os.path.basename(words[0])[:24]
+    out = [prog]
+    if prog in WATCH_SUBCOMMANDS:
+        for w in words[1:3]:
+            if w.startswith("-") or not w.replace("-", "").replace(":", "").isalnum() or len(w) > 20:
+                break
+            out.append(w)
+            if prog not in ("npm", "pnpm", "yarn", "bun") or w != "run":
+                break
+    return " ".join(out)
+
+
+def parse_kitty_ls(data, names=None):
+    """From `kitty @ ls` JSON keep only what Byte uses, per window id: a name for the tab, whether the
+    shell is at its prompt, the short last command, its exit status, and the agent in front (if any).
+    The name is the list entry whose folder the window is in (`names`: real folder path → name), else
+    a title someone set on purpose, else the folder's name. Never kitty's automatic title: while a
+    command runs that is the whole command line."""
+    snap = {}
+    for os_win in data if isinstance(data, list) else []:
+        for tab in os_win.get("tabs", []):
+            for w in tab.get("windows", []):
+                fg = [os.path.basename(str((p.get("cmdline") or [""])[0])) for p in w.get("foreground_processes") or []]
+                agent = next((AGENT_NAMES[n] for n in fg if n in AGENT_NAMES), None)
+                cwd = str(w.get("cwd") or "").rstrip("/")
+                name = (names or {}).get(os.path.realpath(cwd)) if cwd else None
+                if not name and tab.get("title_overridden"):
+                    name = str(tab.get("title") or "").strip()
+                if not name and cwd:
+                    name = "your home folder" if cwd == str(Path.home()) else os.path.basename(cwd)
+                snap[w.get("id")] = {"tab": (name or "a tab")[:40], "prompt": bool(w.get("at_prompt")),
+                                     "cmd": short_cmd(w.get("last_reported_cmdline") or ""),
+                                     # tells one run from the next without keeping the command line
+                                     "run": hash((w.get("last_reported_cmdline"), w.get("last_cmd_exit_status"))),
+                                     "status": w.get("last_cmd_exit_status"), "agent": agent}
+    return snap
+
+
+def fmt_duration(s):
+    s = int(s)
+    return f"{s} s" if s < 60 else f"{s // 60} min {s % 60:02d} s" if s < 3600 else f"{s // 3600} h {s % 3600 // 60} min"
+
+
+def watch_events(prev, cur, now):
+    """What changed between two snapshots, as (kind, sound, text, important) for Byte to say. Also
+    carries each window's start time ("since") and last failed command ("failed") forward in `cur`."""
+    events = []
+    for wid, c in cur.items():
+        p = prev.get(wid)
+        if p is None:
+            c["since"] = now
+            continue
+        c["since"] = p.get("since", now)
+        c["failed"] = p.get("failed")
+        tab, cmd = c["tab"], c["cmd"] or "that command"
+        if p["agent"] and not c["agent"]:
+            events.append(("agent", "done", f"{p['agent']} in {tab} is done. It might want you.", True))
+            continue
+        if p["prompt"] and not c["prompt"]:                        # a command started
+            c["since"] = now
+            if not c["agent"] and any(b in cmd.split()[1:] or cmd.endswith(b) for b in WATCH_BUSY):
+                events.append(("start", None, f"{cmd} is running in {tab}. I'll keep an eye on it.", False))
+        elif c["prompt"] and not p["agent"] and (not p["prompt"] or c.get("run") != p.get("run")):
+            # a command finished (or a quick one started and finished between two looks)
+            took, status = (now - p.get("since", now)) if not p["prompt"] else 0, c["status"]
+            if status == 127:
+                events.append(("fail", "oops", f"{cmd.split()[0]} isn't a command here. A typo?", False))
+            elif status not in (0, None):
+                c["failed"] = cmd
+                if took >= 3 or any(b in cmd for b in WATCH_BUSY):
+                    events.append(("fail", "oops", f"✗ {cmd} failed in {tab} (exit {status}). You've got this.", True))
+            elif status == 0:
+                if p.get("failed") == cmd:
+                    c["failed"] = None
+                    events.append(("fixed", "done", f"Fixed it! {cmd} works now in {tab}.", True))
+                elif cmd.startswith("git push"):
+                    events.append(("push", "done", f"Pushed from {tab}. Off it goes!", True))
+                elif cmd.startswith("git commit"):
+                    events.append(("commit", None, f"Committed in {tab}. Nice and tidy.", False))
+                elif took >= 20:
+                    events.append(("done", "done", f"✓ {cmd} finished in {tab} ({fmt_duration(took)}).", True))
+    return events
 
 
 # ---------- UI ----------
@@ -1032,6 +1155,11 @@ class Window(Adw.ApplicationWindow):
         self.sounds_on = settings.get("sounds", True) is not False
         self.tips_on = settings.get("tips", True) is not False
         self.cat_on = settings.get("cat", True) is not False and HAVE_CAIRO
+        self.watch_on = settings.get("watch", True) is not False
+        self._watch_prev = None      # the last kitty snapshot (None until kitty answers)
+        self._watch_busy = False     # a `kitty @ ls` is running in the worker thread
+        self._watch_skip = 0         # ticks to skip after kitty didn't answer (back off)
+        self._watch_said = 0.0       # when Byte last commented on the terminal
         self._pending_sound = None   # (name, timer) of the one extra sound an action may add
         self.checked = set()
         self.play_btns = []
@@ -1056,7 +1184,8 @@ class Window(Adw.ApplicationWindow):
         self.favs_act = Gio.SimpleAction.new("open-favs", None)
         self.favs_act.connect("activate", lambda *_: self._open_many(favorites=True))
         self.add_action(self.favs_act)
-        for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on), ("cat", self.cat_on)):
+        for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on), ("cat", self.cat_on),
+                         ("watch", self.watch_on)):
             a = Gio.SimpleAction.new_stateful(name, None, GLib.Variant("b", on))
             a.connect("change-state", self._switch_changed)
             self.add_action(a)
@@ -1095,6 +1224,7 @@ class Window(Adw.ApplicationWindow):
         primary.append("Show tips again", "win.tips-again")
         cat_menu = Gio.Menu()
         cat_menu.append("Byte the cat", "win.cat")
+        cat_menu.append("Byte watches my kitty tabs", "win.watch")
         cat_menu.append("Badges…", "win.badges")
         primary.append_section(None, cat_menu)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=primary,
@@ -1110,7 +1240,9 @@ class Window(Adw.ApplicationWindow):
         self.cat.set_visible(self.cat_on)
         if self.cat_on:
             self.cat.start()
-        self.connect("close-request", lambda *_: self.cat.stop() or False)
+        self._watch_timer = 0 if DRY_RUN else GLib.timeout_add_seconds(2, self._watch_tick)
+        self.connect("close-request", lambda *_: (self.cat.stop(), self._watch_timer and
+                                                  GLib.source_remove(self._watch_timer)) and False)
         stats = self._stats()
         if self.mode not in stats.get("modes", []):   # for the Explorer badge
             self._set_stat("modes", stats.get("modes", []) + [self.mode])
@@ -1388,6 +1520,52 @@ class Window(Adw.ApplicationWindow):
         win.set_content(tv)
         win.present()
 
+    # ---------- Byte watches the launcher's kitty window ----------
+    def _watch_tick(self):
+        """Every 2 s: ask the launcher's kitty window what its tabs are doing (in a worker thread)."""
+        if not (self.cat_on and self.watch_on) or self._watch_busy:
+            return True
+        if self._watch_skip:
+            self._watch_skip -= 1
+            return True
+        self._watch_busy = True
+        names = {os.path.realpath(os.path.expanduser(e["folder"])): e.get("name") or Path(e["folder"]).name
+                 for e in self.sessions}
+
+        def ask():
+            snap = None
+            try:
+                r = subprocess.run([KITTY, "@", "--to", KITTY_SOCK, "ls"], capture_output=True, timeout=2)
+                if r.returncode == 0:
+                    snap = parse_kitty_ls(json.loads(r.stdout or b"[]"), names)
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                pass
+            GLib.idle_add(self._watch_apply, snap)
+        threading.Thread(target=ask, daemon=True).start()
+        return True
+
+    def _watch_apply(self, snap):
+        """Back on the main thread: compare with the last snapshot and let Byte react."""
+        self._watch_busy = False
+        if snap is None:                      # no launcher kitty window: ask less often
+            self._watch_prev, self._watch_skip = None, 4
+            return False
+        if self._watch_prev is not None and self.cat_on and self.watch_on:
+            now = time.monotonic()
+            for _kind, sound, text, important in watch_events(self._watch_prev, snap, now):
+                if not important and now - self._watch_said < 8:
+                    continue                  # don't chatter: small things wait their turn
+                self._watch_said = now
+                ok = sound != "oops"
+                self.cat.react("hop" if ok and sound else "surprise" if not ok else "look", text, hold=15)
+                if sound:
+                    self._sound(sound)
+                break                         # one comment per look
+        else:
+            watch_events({}, snap, time.monotonic())   # just note when each window was first seen
+        self._watch_prev = snap
+        return False
+
     def _pet(self):
         """Clicking the cat: a little chirp, a wink and its next line. Ten times earns a secret badge."""
         self._sound("chirp")
@@ -1410,6 +1588,11 @@ class Window(Adw.ApplicationWindow):
             self._sound("open")   # a sample, so you hear what you turned on
         elif name == "tips":
             self.tips_on = on
+        elif name == "watch":
+            self.watch_on = on
+            self._watch_prev = None
+            if on and self.cat_on:
+                self.cat.react("look", "I'll keep an eye on the kitty tabs I open for you.")
         else:
             self.cat_on = on
             self.cat.set_visible(on)

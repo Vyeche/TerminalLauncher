@@ -8,6 +8,10 @@ shell, an agent (`claude`, `omp`, `opencode`) or a command you saved. In kitty m
 kitty window with remote control on a socket only (`unix:@claude-launcher-kitty`) and adds tabs
 to it. At login it can run from one XDG autostart entry, `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`.
 
+When **Byte watches my kitty tabs** is on (in kitty mode), it asks that same kitty window, read-only
+(`kitty @ ls`), what each tab is doing, and shows only a command's name and subcommand; it never reads
+the windows' environment and keeps nothing.
+
 It makes **no network connections**, has no server, account or telemetry, and needs no sudo.
 
 Realistic problems we want to hear about:
