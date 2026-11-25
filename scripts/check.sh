@@ -139,6 +139,9 @@ def act(app):
         css.load_from_string(tl.APP_CSS)
         assert not errors, f"CSS: {errors}"
         w = tl.Window(app)            # built, never shown
+        from datetime import datetime as DT
+        w.cat.stop()                                     # no random idle moves or lines during the test
+        w.cat.now = lambda: DT(2026, 11, 25, 12, 0)      # a pinned clock: noon, so no time-of-day badges
         names = lambda: [s["name"] for s in w.sessions]
         saved = lambda: [(s["name"], bool(s.get("star"))) for s in tl.load_sessions()]
         played = lambda: open(os.environ["TL_PLAYED"]).read() if os.path.exists(os.environ["TL_PLAYED"]) else ""
@@ -148,6 +151,11 @@ def act(app):
                 if f"{name}-v1.wav" in played(): return True
                 GLib.MainContext.default().iteration(False); time.sleep(0.05)
             return False
+        def spin(seconds=0.3):                           # let GTK run what it has queued (idle work, timers)
+            import time
+            end = time.time() + seconds
+            while time.time() < end:
+                GLib.MainContext.default().iteration(False); time.sleep(0.01)
         assert len(w.ticks) == 4 and len(w.play_btns) == 4 and len(w.star_btns) == 4
         assert [g.get_title() for g in w.groups] == ["Terminals"], "no Favorites group without favorites"
         rows = []
@@ -177,10 +185,12 @@ def act(app):
         assert [g.get_title() for g in w.groups] == ["★ Favorites", "Terminals"]
         assert w.star_btns[0].get_active() and w.ticks[0].get_active() and sorted(w.checked) == [0]
         assert saved()[0] == ("Agent", True), saved()
-        assert heard("star") and heard("tip"), "no star/tip sound"
+        assert heard("star") and heard("badge"), "no star sound or badge sparkle"
+        assert "first-star" in w._badges(), w._badges()
         w._set_star(w.sessions[2])                       # the next one goes to the end of Favorites
         second = names()[1]
         assert [s.get("star", False) for s in w.sessions] == [True, True, False, False], names()
+        assert w.cat.label.get_label().startswith("Psst"), w.cat.label.get_label()   # the tip, said by the cat
         w._set_star(agent)                               # unstarred: top of Terminals
         assert names()[:2] == [second, "Agent"] and not agent.get("star"), names()
         assert heard("unstar"), "no unstar sound"
@@ -194,6 +204,9 @@ def act(app):
         seen = tl.load_settings().get("tips_seen", [])
         assert {"star", "drag-star"} <= set(seen), seen
         assert w._tip("star", "again") is False, "a tip showed twice"
+        spin()
+        assert {"first-star", "tidy-paws", "polyglot"} <= set(w._badges()), w._badges()
+        assert w._award("first-star") is False, "a badge was given twice"
 
         # The Edit dialog keeps the star and the open count
         cap = {}
@@ -214,6 +227,12 @@ def act(app):
         assert w.sessions[last].get("opens") == 3, w.sessions[last]
         assert "suggest-star" in tl.load_settings()["tips_seen"]
         assert heard("open"), "no open sound"
+        assert not {"early-bird", "night-owl"} & set(w._badges()), w._badges()
+        w.cat.now = lambda: DT(2026, 11, 25, 6, 30)      # before 7 in the morning
+        w._launch(last)
+        assert "early-bird" in w._badges() and "night-owl" not in w._badges(), w._badges()
+        w.cat.now = lambda: DT(2026, 11, 25, 12, 0)
+        assert heard("badge"); spin(0.6)                 # the badge's sparkle plays; a separate action follows
         w.ticks[1].set_active(True); w.ticks[2].set_active(True)
         assert "tick" in tl.load_settings()["tips_seen"], "no tip for ticking two"
         import time
@@ -240,6 +259,26 @@ def act(app):
             peak = max(abs(x) for x in array.array("h", frames)) / 32767
             assert 0.05 < peak <= tl.SOUND_PEAK + 0.001, (name, peak)
 
+        # Byte the cat: lines, drawing, petting, hiding
+        assert tl.cat_line("greeting", DT(2026, 11, 25, 9)) == "Good morning! It's Wednesday, November 25."
+        assert tl.cat_line("word", DT(2026, 11, 25)) == tl.cat_line("word", DT(2026, 11, 25, 23)), "word changed within a day"
+        assert tl.cat_line("joke", DT(2026, 11, 25)) != tl.cat_line("joke", DT(2026, 11, 26))
+        import cairo
+        surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 64, 64)
+        for kw in ({}, {"blink_l": 1, "blink_r": 1}, {"hop": 1, "blush": True, "mouth": "smile"},
+                   {"paw": 1}, {"mouth": "o", "ear": 1}, {"tail": -1, "look": 1}, {"sleep": True}):
+            tl.draw_cat(cairo.Context(surf), 64, tl.cat_pose(**kw))
+        for _ in range(10):
+            w._pet()
+        assert "curious" in w._badges() and tl.load_settings()["stats"]["pets"] == 10
+        assert w.cat.badges_btn.get_label() == f"🏅 {len(w._badges())}/{len(tl.BADGES)}", w.cat.badges_btn.get_label()
+        w.cat.start(); assert w.cat.timers, "the cat's timer didn't start"
+        w.lookup_action("cat").change_state(GLib.Variant("b", False))
+        assert not w.cat.get_visible() and not w.cat.timers, "hiding the cat left it running"
+        w._tip("drag-star", "x"); w._set_star(w.sessions[-1])   # with the cat hidden: toasts, no errors
+        assert tl.load_settings()["cat"] is False
+        w._show_badges()
+
         EditDialog = tl.EditDialog(w, None, lambda e: None)
         EditDialog.destroy()
         result["ok"] = True
@@ -251,7 +290,8 @@ a.connect("activate", act); a.run([])
 sys.exit(0 if result.get("ok") else 1)
 EOF
   then ok "window: drag and Move up/down keep ticks; favorites (☆, drag in/out, Edit keeps it);"
-       ok "        opens counted; tips once; sounds valid, quiet and off when Sounds is off; CSS loads"
+       ok "        opens counted; tips once; sounds valid, quiet and off when Sounds is off; CSS loads;"
+       ok "        Byte the cat: lines, drawing, badges once (pinned clock), petting, hiding stops it"
   else bad "window test:"; sed 's/^/        /' "$T/ui.log" | tail -20; fi
 fi
 

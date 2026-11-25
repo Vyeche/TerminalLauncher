@@ -82,6 +82,23 @@ Small things that make it nicer to use and teach it as you go, all quiet and eas
 **☰** at the top right turns **Sounds** and **Tips** on or off, and **Show tips again** brings the
 tips back. Sounds also stay off when your desktop's own event sounds are off.
 
+### Byte, the launcher's cat
+A little ginger cat sits at the bottom of the window. You never have to feed it or look after it; it
+just keeps you company:
+- It **blinks, winks, swishes its tail, twitches an ear** and looks around, and **naps** late at night.
+- It **says something** now and then: good morning with today's date, a **word of the day** (a
+  computing word, explained plainly), a **joke of the day**, or a "did you know" shell tip. Click it
+  for the next one (it says *mrrp?*).
+- It **reacts** when you do things: a hop and a blush for a new favorite, a wave when something
+  opens, a nod when a dragged row lands. The tips above come from the cat, too.
+- **Badges:** twelve little quests to find, like your first star, opening 25 terminals, opening one
+  before 7 in the morning or after 11 at night, trying all three **Open in** choices, and one secret.
+  Earning one plays a small sparkle and the cat cheers. **🏅** next to the cat (or **☰ → Badges…**)
+  shows what you've found and hints at the rest.
+
+**☰ → Byte the cat** hides it (its timers stop too). It never goes online; the words, jokes and tips
+are built in. No weather, for that reason.
+
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)
 
 ![Dragging "Website redesign" by its handle from the top of the list to fourth place: the row fades, a blue line shows where it will land, and the ticked rows stay ticked](docs/images/gifs/drag.gif)
@@ -111,8 +128,8 @@ itself. Rows that start at login say so in their subtitle.
   ```
 
 ## Install
-Needs Python 3 with GTK 4 and libadwaita 1.4+ (`python3-gi`, `gir1.2-adw-1`; already there on
-Pop!_OS 24.04 COSMIC and recent Ubuntu/Fedora GNOME).
+Needs Python 3 with GTK 4 and libadwaita 1.4+ (`python3-gi`, `gir1.2-adw-1`, and `python3-gi-cairo`
+for drawing the cat; already there on Pop!_OS 24.04 COSMIC and recent Ubuntu/Fedora GNOME).
 
 ```bash
 git clone https://github.com/Vyeche/TerminalLauncher.git
@@ -144,7 +161,7 @@ Add `--dry-run` to `--autostart` to print the commands instead of running them.
 | `scripts/sync-public.sh`, `scripts/publish-wiki.sh` | for maintainers: publish to GitHub and its wiki |
 | `docs/wiki/` | the [wiki](https://github.com/Vyeche/TerminalLauncher/wiki)'s pages |
 | `~/.config/terminal-launcher/sessions.json` | your list (with each entry's star and how often you opened it) |
-| `~/.config/terminal-launcher/settings.json` | the **Open in** and **Move to monitor** choices, Sounds, Tips and the tips already shown |
+| `~/.config/terminal-launcher/settings.json` | the **Open in** and **Move to monitor** choices, Sounds, Tips, the cat, your badges and their counters |
 | `~/.cache/terminal-launcher/sounds/` | the little sounds, made on first use |
 
 ## Coming from Claude Launcher

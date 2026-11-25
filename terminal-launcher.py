@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import wave
+from datetime import datetime
 from pathlib import Path
 
 import gi
@@ -30,6 +31,12 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
+
+try:   # drawing the cat needs GTK's cairo bridge (python3-gi-cairo); without it the cat stays hidden
+    gi.require_foreign("cairo")
+    HAVE_CAIRO = True
+except ImportError:
+    HAVE_CAIRO = False
 
 APP_ID = "net.vyechi.TerminalLauncher"
 APP_NAME = "Terminal Launcher"
@@ -444,26 +451,32 @@ def recent_sessions(limit=30):
 SOUND_DIR = LOG.parent / "sounds"
 SOUND_VERSION = 1   # bump when the notes change, so the cached files are made again
 SOUND_PEAK = 0.18   # of full scale (about -15 dBFS): a soft tick, never an alert
-SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1)
+SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1[, glide to Hz])
     "star": [(0.0, 784, 0.16, 1.0), (0.07, 1175, 0.24, 0.8)],                       # G5 → D6, up
     "unstar": [(0.0, 659, 0.12, 0.8), (0.06, 494, 0.18, 0.7)],                      # E5 → B4, down
     "open": [(0.0, 523, 0.08, 0.7), (0.035, 784, 0.12, 0.6)],                       # a short pluck
     "drop": [(0.0, 330, 0.12, 0.9)],                                                 # a soft low tock
     "tip": [(0.0, 880, 0.18, 0.5), (0.09, 1109, 0.18, 0.45), (0.18, 1319, 0.3, 0.4)],  # A5 C♯6 E6
+    "badge": [(0.0, 1047, 0.12, 0.6), (0.06, 1319, 0.12, 0.55), (0.12, 1568, 0.14, 0.5),
+              (0.18, 2093, 0.35, 0.45)],                                             # a C-major sparkle
+    "chirp": [(0.0, 700, 0.16, 0.8, 1050)],                                          # the cat: "mrrp?"
 }
 
 
 def synth(notes, rate=44100):
     """Soft marimba-like notes (a sine plus a quiet octave, 4 ms attack, quick decay), scaled so the
-    loudest sample is SOUND_PEAK."""
-    length = max(start + dur for start, _f, dur, _a in notes) + 0.02
+    loudest sample is SOUND_PEAK. A note with a fifth value glides to that frequency."""
+    length = max(n[0] + n[2] for n in notes) + 0.02
     buf = [0.0] * int(length * rate)
-    for start, freq, dur, amp in notes:
+    for start, freq, dur, amp, *glide in notes:
         s0 = int(start * rate)
+        end = glide[0] if glide else freq
+        phase = 0.0
         for k in range(int(dur * rate)):
             t = k / rate
+            phase += 2 * math.pi * (freq + (end - freq) * t / dur) / rate
             env = min(1.0, t / 0.004) * math.exp(-7.0 * t / dur)
-            buf[s0 + k] += amp * env * (math.sin(2 * math.pi * freq * t) + 0.25 * math.sin(4 * math.pi * freq * t))
+            buf[s0 + k] += amp * env * (math.sin(phase) + 0.25 * math.sin(2 * phase))
     peak = max(abs(x) for x in buf) or 1.0
     return [x / peak * SOUND_PEAK for x in buf]
 
@@ -506,6 +519,171 @@ def favorites_first(sessions):
     return [s for s in sessions if s.get("star")] + [s for s in sessions if not s.get("star")]
 
 
+# ---------- Byte, the launcher's cat ----------
+# A small drawn cat in a bar at the bottom of the window. You never have to look after it: it blinks,
+# winks, swishes its tail, naps late at night, cheers when you do things, and says something now and
+# then (the date, a word of the day, a joke, a tip). It also hands out badges for little quests.
+# Everything here is made up or checkable in a shell; it never goes online.
+CAT_WORDS = [  # (word, plain meaning): one per day
+    ("daemon", "a program that quietly runs in the background, waiting for work."),
+    ("shell", "the program that reads what you type in a terminal and runs it."),
+    ("prompt", "the text before your cursor that says the shell is ready."),
+    ("stdout", "where a program writes its normal output."),
+    ("stderr", "where a program writes its errors, apart from the normal output."),
+    ("pipe", "the | sign: it sends one command's output into the next command."),
+    ("PATH", "the list of folders your shell looks in to find commands."),
+    ("symlink", "a file that points to another file or folder."),
+    ("cron", "a helper that runs commands on a schedule."),
+    ("SSH", "a safe way to log in to another computer over the network."),
+    ("PID", "the number that names a running program (a process)."),
+    ("socket", "a meeting point two programs use to talk to each other."),
+    ("glob", "a pattern like *.txt that matches file names."),
+    ("exit code", "the number a program ends with: 0 means it went well."),
+    ("dotfile", "a settings file whose name starts with a dot, so it's hidden by default."),
+    ("kernel", "the core of the system, the part that talks to the hardware."),
+    ("Wayland", "the newer way Linux apps put their windows on the screen."),
+    ("TTY", "short for teletype; today it means a terminal device."),
+]
+CAT_JOKES = [
+    "I don't chase mice. I chase cursors. They blink first.",
+    "I napped on the keyboard. Now you have a folder called ffffffffff.",
+    "Bash, zsh, fish... honestly, I'm only here for the fish.",
+    "If it fits, I sit. Your terminal fits. Scooting over.",
+    "Git push? I prefer git purr.",
+    "Ctrl+Z won't undo my nap. I checked.",
+    "I asked htop how it was doing. It told me everything at once.",
+    "Your folders have lovely names. I'd sit in every one of them.",
+    "A tab walks into a window. The window says: make yourself at ~.",
+    "My nine lives? Eight are in terminal tabs. The ninth is napping.",
+    "Every session here gets resumed. Nobody gets left behind. Not even me.",
+    "I tried to sudo a nap. Turns out I already had permission.",
+]
+CAT_TIPS = [  # things you can check yourself in a shell or in the launcher
+    "In bash, cd - takes you back to the folder you were just in.",
+    "Ctrl+R in bash searches the commands you ran before.",
+    "Tab finishes a file or command name for you. Press it twice to see the choices.",
+    "!! in bash means the last command again. Try sudo !!",
+    "Ctrl+L clears the terminal screen; your history stays.",
+    "~ is short for your home folder, in every command.",
+    "Ctrl+A jumps to the start of the line, Ctrl+E to the end.",
+    "Ctrl+O here opens a shell in any folder, without adding it to the list.",
+    "Drag a row into Favorites to star it. Drag it out to unstar it.",
+    "Ctrl+Shift+Enter opens all your favorites at once.",
+    "Tick a few rows, then Ctrl+Enter opens them together.",
+    "Rows that open at login say \"starts at login\" under their name.",
+]
+BADGES = [  # (id, emoji, name, how to earn it; None = a secret until earned)
+    ("first-star", "⭐", "First star", "Star a terminal."),
+    ("collector", "🌟", "Collector", "Have 5 favorites at once."),
+    ("tidy-paws", "🐾", "Tidy paws", "Drag a row to a new place."),
+    ("squad", "🚀", "Squad", "Open 3 or more terminals at once."),
+    ("regular", "☕", "Regular", "Open 25 terminals."),
+    ("marathon", "🏃", "Marathon", "Open 100 terminals."),
+    ("early-bird", "🐦", "Early bird", "Open a terminal before 7 in the morning."),
+    ("night-owl", "🦉", "Night owl", "Open a terminal after 11 at night."),
+    ("explorer", "🧭", "Explorer", "Try all three Open in choices."),
+    ("polyglot", "🗣️", "Polyglot", "Keep 3 different kinds of entries in your list."),
+    ("wayfinder", "🗺️", "Wayfinder", "Open a Folder… and keep it in the list."),
+    ("curious", "🐱", "Curious cat", None),   # pet the cat 10 times
+]
+CAT_FUR, CAT_FUR_DARK, CAT_BELLY = (0.95, 0.63, 0.31), (0.82, 0.47, 0.20), (1.0, 0.89, 0.76)
+CAT_LINE, CAT_PINK, CAT_EYE = (0.24, 0.22, 0.27), (0.96, 0.55, 0.62), (0.20, 0.18, 0.22)
+
+
+def cat_pose(**kw):
+    """The cat's pose. blink_*: 0 open .. 1 shut; tail and look: -1..1; hop, paw, ear: 0..1."""
+    p = {"blink_l": 0.0, "blink_r": 0.0, "mouth": "w", "ear": 0.0, "tail": 0.0, "hop": 0.0,
+         "paw": 0.0, "look": 0.0, "sleep": False, "blush": False}
+    p.update(kw)
+    return p
+
+
+def draw_cat(cr, size, p):
+    """Draw the cat into a size × size square with cairo (114 units = the square: the cat is 100
+    units tall, with room above it for a hop)."""
+    def ellipse(x, y, rx, ry):
+        cr.save(); cr.translate(x, y); cr.scale(rx, ry); cr.arc(0, 0, 1, 0, 2 * math.pi); cr.restore()
+
+    def fill_stroke(fill, lw=2.6):
+        cr.set_source_rgb(*fill); cr.fill_preserve()
+        cr.set_source_rgb(*CAT_LINE); cr.set_line_width(lw); cr.stroke()
+
+    cr.save()
+    cr.scale(size / 114, size / 114)
+    cr.translate(7, 13 - p["hop"] * 12)          # room above for the hop
+    cr.set_line_join(1); cr.set_line_cap(1)      # round
+    t = p["tail"]                                 # the tail, swishing
+    cr.move_to(66, 84)
+    cr.curve_to(86, 86, 92 + 4 * t, 70, 84 + 10 * t, 56 - 4 * abs(t))
+    cr.set_source_rgb(*CAT_LINE); cr.set_line_width(11); cr.stroke_preserve()
+    cr.set_source_rgb(*CAT_FUR); cr.set_line_width(5.8); cr.stroke()
+    cr.move_to(28, 92)                            # body
+    cr.curve_to(24, 70, 34, 56, 50, 56); cr.curve_to(66, 56, 76, 70, 72, 92); cr.close_path()
+    fill_stroke(CAT_FUR)
+    ellipse(50, 80, 11, 11); cr.set_source_rgb(*CAT_BELLY); cr.fill()
+    ellipse(40, 92, 6, 4); fill_stroke(CAT_FUR)    # paws; the right one waves
+    if p["paw"] > 0:
+        a = p["paw"]
+        cr.save(); cr.translate(70 + 4 * a, 80 - 26 * a); cr.rotate(-0.6 * a)
+        ellipse(0, 0, 5.5, 6.5); fill_stroke(CAT_FUR); cr.restore()
+    else:
+        ellipse(60, 92, 6, 4); fill_stroke(CAT_FUR)
+    for side, twitch in ((-1, p["ear"]), (1, 0.0)):   # ears; the left one twitches
+        cr.save(); cr.translate(50 + side * 15, 22); cr.rotate(side * 0.25 - twitch * 0.35)
+        cr.move_to(-9, 8); cr.line_to(0, -12); cr.line_to(9, 8); cr.close_path(); fill_stroke(CAT_FUR)
+        cr.move_to(-4.5, 5); cr.line_to(0, -5); cr.line_to(4.5, 5); cr.close_path()
+        cr.set_source_rgb(*CAT_PINK); cr.fill(); cr.restore()
+    ellipse(50, 38, 26, 21); fill_stroke(CAT_FUR)  # head
+    cr.set_source_rgb(*CAT_FUR_DARK); cr.set_line_width(2.2)
+    for x in (44, 50, 56):
+        cr.move_to(x, 18.5); cr.line_to(x, 24); cr.stroke()
+    look = p["look"] * 2.5
+    for x, blink in ((40, p["blink_l"]), (60, p["blink_r"])):
+        if p["sleep"] or blink >= 0.85:           # closed: a soft arc
+            cr.arc(x, 37, 4.5, 0.15 * math.pi, 0.85 * math.pi)
+            cr.set_source_rgb(*CAT_LINE); cr.set_line_width(2.4); cr.stroke()
+        else:
+            ellipse(x + look, 37, 4.2, 5.4 * (1 - blink)); cr.set_source_rgb(*CAT_EYE); cr.fill()
+            ellipse(x + look + 1.4, 35, 1.4, max(0.1, 1.4 * (1 - blink))); cr.set_source_rgb(1, 1, 1); cr.fill()
+    if p["blush"]:
+        for x in (35, 65):
+            ellipse(x, 45, 4, 2.2); cr.set_source_rgba(*CAT_PINK, 0.55); cr.fill()
+    cr.move_to(48, 43); cr.line_to(52, 43); cr.line_to(50, 45.5); cr.close_path()
+    cr.set_source_rgb(*CAT_PINK); cr.fill()
+    cr.set_source_rgb(*CAT_LINE); cr.set_line_width(1.8)
+    if p["mouth"] == "w":                         # ω
+        cr.arc(47.5, 46, 2.5, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
+        cr.arc(52.5, 46, 2.5, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
+    elif p["mouth"] == "o":
+        ellipse(50, 49, 2.4, 3); cr.fill()
+    else:                                          # a smile
+        cr.arc(50, 45, 5, 0.15 * math.pi, 0.85 * math.pi); cr.stroke()
+    cr.set_line_width(1.1)                         # whiskers
+    for side in (-1, 1):
+        for dy in (-1.5, 2):
+            cr.move_to(50 + side * 12, 45 + dy * 0.6); cr.line_to(50 + side * 27, 43 + dy * 2.2); cr.stroke()
+    if p["sleep"]:
+        cr.select_font_face("Sans", 0, 1)
+        for x, y, s in ((76, 18, 9), (84, 9, 7), (90, 2, 5)):
+            cr.set_font_size(s); cr.move_to(x, y); cr.set_source_rgba(*CAT_LINE, 0.8); cr.show_text("z")
+    cr.restore()
+
+
+def cat_line(kind, now, extra=None):
+    """One of the cat's lines. kind: greeting, word, joke or tip; the word and the joke change daily."""
+    day = now.date().toordinal()
+    if kind == "greeting":
+        part = ("Good night" if now.hour < 5 else "Good morning" if now.hour < 12
+                else "Good afternoon" if now.hour < 17 else "Good evening" if now.hour < 22 else "Good night")
+        return f"{part}! It's {now.strftime('%A, %B')} {now.day}."
+    if kind == "word":
+        word, meaning = CAT_WORDS[day % len(CAT_WORDS)]
+        return f"Word of the day: {word}, {meaning}"
+    if kind == "joke":
+        return CAT_JOKES[(day * 7) % len(CAT_JOKES)]
+    return f"Did you know? {CAT_TIPS[(day * 5 + (extra or 0)) % len(CAT_TIPS)]}"
+
+
 # ---------- UI ----------
 # The drop line for dragging, the gold star, and the small animations: a star that pops, a row that
 # glows softly when it becomes a favorite, and ▶ that gives a little press.
@@ -521,6 +699,7 @@ row.dragging { opacity: 0.4; }
 row.glow { animation: tl-glow 1300ms ease-out; }
 @keyframes tl-press { 0% { transform: scale(1); } 45% { transform: scale(0.82); } 100% { transform: scale(1); } }
 .press { animation: tl-press 260ms ease-out; }
+.cat-says { font-style: italic; }
 """
 KIND_ICONS = {"claude": "chat-symbolic", "omp": "chat-symbolic", "opencode": "chat-symbolic",
               "terminal": "utilities-terminal-symbolic", "command": "system-run-symbolic"}
@@ -712,6 +891,135 @@ class EditDialog(Adw.Window):
         self.close()
 
 
+class Cat(Gtk.Box):
+    """The cat's bar: the drawn cat, what it says, and the Badges button. `now` and `rng` can be
+    replaced (tests pin the clock). Its timers run only while it's shown."""
+    SIZE = 72
+
+    def __init__(self, on_pet, on_badges, now=None, rng=None):
+        super().__init__(spacing=12, margin_start=12, margin_end=12, margin_top=4, margin_bottom=6,
+                         css_classes=["cat-bar"])
+        import random
+        self.now = now or datetime.now
+        self.rng = rng or random.Random()
+        self.pose = cat_pose()
+        self.anims = []            # (start, length, kind)
+        self.timers = []
+        self.until = 0.0           # a line set by say() stays until then
+        self.turn = 0
+        self.area = Gtk.DrawingArea(content_width=self.SIZE, content_height=self.SIZE, valign=Gtk.Align.END,
+                                    tooltip_text="Byte, the launcher's cat. Click to say hi.")
+        self.area.set_draw_func(lambda _a, cr, w, h: draw_cat(cr, min(w, h), self._pose_now()))
+        self.area.update_property([Gtk.AccessibleProperty.LABEL], ["Byte, the launcher's cat"])
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_: on_pet())
+        self.area.add_controller(click)
+        self.area.set_cursor(Gdk.Cursor.new_from_name("pointer"))
+        self.label = Gtk.Label(xalign=0, wrap=True, lines=2, ellipsize=3, hexpand=True,
+                               valign=Gtk.Align.CENTER, css_classes=["cat-says"])
+        self.badges_btn = Gtk.Button(css_classes=["flat"], valign=Gtk.Align.CENTER,
+                                     tooltip_text="Your badges, and the quests that earn the rest")
+        self.badges_btn.connect("clicked", lambda *_: on_badges())
+        self.append(self.area)
+        self.append(self.label)
+        self.append(self.badges_btn)
+        self.set_badge_count(0)
+        self.say(cat_line("greeting", self.now()), 20)
+
+    # ---------- what it says ----------
+    def say(self, text, hold=12):
+        """Say something now and keep it up for `hold` seconds before the next idle line."""
+        self.label.set_label(text)
+        self.label.set_tooltip_text(text)
+        self.until = time.monotonic() + hold
+
+    def next_line(self):
+        kinds = ["word", "joke", "tip", "greeting"]
+        kind = kinds[self.turn % len(kinds)]
+        self.turn += 1
+        self.say(cat_line(kind, self.now(), self.turn), 45)
+
+    def set_badge_count(self, n):
+        self.badges_btn.set_label(f"🏅 {n}/{len(BADGES)}")
+
+    # ---------- moving ----------
+    def asleep(self):
+        h = self.now().hour
+        return h >= 23 or h < 6
+
+    def play(self, kind, length):
+        """Start one of the small moves: blink, wink, hop, wave, tail, ear, look, nod."""
+        if not Gtk.Settings.get_default().get_property("gtk-enable-animations"):
+            return
+        self.anims.append((time.monotonic(), length, kind))
+        if not any(t[0] == "frame" for t in self.timers):
+            self.timers.append(("frame", GLib.timeout_add(33, self._frame)))
+
+    def _frame(self):
+        now = time.monotonic()
+        self.anims = [a for a in self.anims if now - a[0] < a[1]]
+        self.area.queue_draw()
+        if self.anims:
+            return True
+        self.timers = [t for t in self.timers if t[0] != "frame"]
+        return False
+
+    def _pose_now(self):
+        p = dict(self.pose)
+        p["sleep"] = self.asleep() and not self.anims
+        now = time.monotonic()
+        for start, length, kind in self.anims:
+            f = min(1.0, (now - start) / length)
+            bump = math.sin(math.pi * f)               # 0 → 1 → 0
+            if kind == "blink":
+                p["blink_l"] = p["blink_r"] = bump
+            elif kind == "wink":
+                p["blink_r"] = min(1.0, bump * 1.6); p["mouth"] = "smile"
+            elif kind == "hop":
+                p["hop"] = bump; p["mouth"] = "smile"; p["blush"] = True
+            elif kind == "wave":
+                p["paw"] = min(1.0, bump * 1.5); p["tail"] = math.sin(f * 4 * math.pi) * 0.3
+                p["mouth"] = "smile"
+            elif kind == "tail":
+                p["tail"] = math.sin(f * 2 * math.pi)
+            elif kind == "ear":
+                p["ear"] = bump
+            elif kind == "look":
+                p["look"] = math.sin(f * 2 * math.pi)
+            elif kind == "nod":
+                p["hop"] = -0.25 * bump; p["blink_l"] = p["blink_r"] = 0.5 * bump
+            elif kind == "surprise":
+                p["mouth"] = "o"; p["ear"] = bump
+        return p
+
+    def _idle(self):
+        """Once a second: maybe blink or do something small; now and then a new line."""
+        r = self.rng.random()
+        if not self.asleep():
+            if r < 0.22:
+                self.play("blink", 0.18)
+            elif r < 0.25:
+                self.play(self.rng.choice(["tail", "ear", "look", "wink"]), 1.0)
+        if time.monotonic() > self.until:
+            self.next_line()
+        self.area.queue_draw()
+        return True
+
+    def start(self):
+        if not any(t[0] == "idle" for t in self.timers):
+            self.timers.append(("idle", GLib.timeout_add(1000, self._idle)))
+
+    def stop(self):
+        for _name, tid in self.timers:
+            GLib.source_remove(tid)
+        self.timers = []
+        self.anims = []
+
+    def react(self, move, text, hold=8):
+        self.say(text, hold)
+        self.play(move, {"blink": 0.18, "hop": 0.5, "wave": 1.1, "nod": 0.5}.get(move, 0.8))
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_NAME, default_width=720, default_height=640)
@@ -723,6 +1031,8 @@ class Window(Adw.ApplicationWindow):
         settings = load_settings()
         self.sounds_on = settings.get("sounds", True) is not False
         self.tips_on = settings.get("tips", True) is not False
+        self.cat_on = settings.get("cat", True) is not False and HAVE_CAIRO
+        self._pending_sound = None   # (name, timer) of the one extra sound an action may add
         self.checked = set()
         self.play_btns = []
         self.groups = []
@@ -746,10 +1056,13 @@ class Window(Adw.ApplicationWindow):
         self.favs_act = Gio.SimpleAction.new("open-favs", None)
         self.favs_act.connect("activate", lambda *_: self._open_many(favorites=True))
         self.add_action(self.favs_act)
-        for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on)):
+        for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on), ("cat", self.cat_on)):
             a = Gio.SimpleAction.new_stateful(name, None, GLib.Variant("b", on))
             a.connect("change-state", self._switch_changed)
             self.add_action(a)
+        badges = Gio.SimpleAction.new("badges", None)
+        badges.connect("activate", lambda *_: self._show_badges())
+        self.add_action(badges)
         again = Gio.SimpleAction.new("tips-again", None)
         again.connect("activate", lambda *_: (save_setting("tips_seen", []),
                                               self._toast("Tips will show again, each once")))
@@ -780,13 +1093,27 @@ class Window(Adw.ApplicationWindow):
         primary.append("Sounds", "win.sounds")
         primary.append("Tips", "win.tips")
         primary.append("Show tips again", "win.tips-again")
+        cat_menu = Gio.Menu()
+        cat_menu.append("Byte the cat", "win.cat")
+        cat_menu.append("Badges…", "win.badges")
+        primary.append_section(None, cat_menu)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=primary,
-                                       tooltip_text="Sounds and tips"))
+                                       tooltip_text="Sounds, tips, the cat and your badges"))
         self.open_btn = Adw.SplitButton(menu_model=menu, css_classes=["suggested-action"],
                                         dropdown_tooltip="Choose where terminals open, or open your favorites")
         self.open_btn.connect("clicked", lambda *_: self._open_many())
         header.pack_end(self.open_btn)
         tv.add_top_bar(header)
+        self.cat = Cat(self._pet, self._show_badges)
+        self.cat.set_badge_count(len(self._badges()))
+        tv.add_bottom_bar(self.cat)
+        self.cat.set_visible(self.cat_on)
+        if self.cat_on:
+            self.cat.start()
+        self.connect("close-request", lambda *_: self.cat.stop() or False)
+        stats = self._stats()
+        if self.mode not in stats.get("modes", []):   # for the Explorer badge
+            self._set_stat("modes", stats.get("modes", []) + [self.mode])
 
         self.page = Adw.PreferencesPage()
         how = Adw.PreferencesGroup()
@@ -946,6 +1273,8 @@ class Window(Adw.ApplicationWindow):
         self.stack.set_visible_child_name("list" if n else "empty")
         self.open_btn.set_sensitive(bool(n))
         self._update_open_label()
+        if len({s.get("kind", "claude") for s in self.sessions}) >= 3:
+            GLib.idle_add(lambda: self._award("polyglot") and False)
 
     def _animate(self, widget, css_class, ms):
         """Play one of the small CSS animations on a widget (skipped when the desktop turns animations off)."""
@@ -969,24 +1298,122 @@ class Window(Adw.ApplicationWindow):
         if key in seen:
             return False
         save_setting("tips_seen", seen + [key])
-        t = Adw.Toast(title=GLib.markup_escape_text(f"Tip: {text}"), timeout=8)
-        if button:
-            t.set_button_label(button)
-            t.connect("button-clicked", lambda *_: on_click())
-        self.toasts.add_toast(t)
-        # a tip usually comes with another sound (a star, an open): chime after it, not over it
-        GLib.timeout_add(450, lambda: self._sound("tip") and False)
+        if self.cat_on and not button:      # the cat says it (one voice); a tip with a button stays a toast
+            self.cat.react("wink", f"Psst: {text[0].upper()}{text[1:]}", hold=14)
+        else:
+            t = Adw.Toast(title=GLib.markup_escape_text(f"Tip: {text}"), timeout=8)
+            if button:
+                t.set_button_label(button)
+                t.connect("button-clicked", lambda *_: on_click())
+            self.toasts.add_toast(t)
+        self._later_sound("tip")
         return True
+
+    def _later_sound(self, name):
+        """The one extra sound an action may add (a tip chime or a badge sparkle), played 450 ms after
+        the action's own sound so they don't clash. A badge's sparkle wins over a tip's chime."""
+        if self._pending_sound:
+            pending, timer = self._pending_sound
+            if pending == "badge":
+                return
+            GLib.source_remove(timer)
+
+        def fire():
+            self._pending_sound = None
+            self._sound(name)
+            return False
+        self._pending_sound = (name, GLib.timeout_add(450, fire))
+
+    def _say(self, move, text):
+        """A reaction: the cat says it (and moves) when it's shown, otherwise a toast."""
+        if self.cat_on:
+            self.cat.react(move, text)
+        else:
+            self._toast(text)
+
+    # ---------- badges ----------
+    def _badges(self):
+        got = load_settings().get("badges")
+        return got if isinstance(got, dict) else {}
+
+    def _stats(self):
+        st = load_settings().get("stats")
+        return st if isinstance(st, dict) else {}
+
+    def _set_stat(self, key, value):
+        st = self._stats()
+        st[key] = value
+        save_setting("stats", st)
+
+    def _bump(self, key, by=1):
+        n = int(self._stats().get(key, 0)) + by
+        self._set_stat(key, n)
+        return n
+
+    def _award(self, bid):
+        """Give a badge once. The cat cheers (or a toast says it) and a sparkle plays. True if new."""
+        got = self._badges()
+        if bid in got or bid not in {b[0] for b in BADGES}:
+            return False
+        got[bid] = self.cat.now().strftime("%Y-%m-%d")
+        save_setting("badges", got)
+        emoji, name = next((b[1], b[2]) for b in BADGES if b[0] == bid)
+        self.cat.set_badge_count(len(got))
+        self._say("hop", f"{emoji} New badge: {name}! That's {len(got)} of {len(BADGES)}.")
+        self._later_sound("badge")
+        return True
+
+    def _show_badges(self):
+        got = self._badges()
+        win = Adw.Window(transient_for=self, modal=True, title="Badges", default_width=460, default_height=600)
+        tv = Adw.ToolbarView()
+        tv.add_top_bar(Adw.HeaderBar())
+        page = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup(title=f"{len(got)} of {len(BADGES)} found",
+                                     description="Little quests: do things in the launcher and Byte hands "
+                                                 "these out. No hurry, and nothing to look after.")
+        for bid, emoji, name, how in BADGES:
+            earned = bid in got
+            if earned:
+                when = datetime.strptime(got[bid], "%Y-%m-%d")
+                sub = f"{how or 'You said hi to the cat a lot.'} Earned {when.strftime('%B')} {when.day}."
+            else:
+                sub = how or "A secret. Maybe say hi to the cat?"
+            row = Adw.ActionRow(title=name if earned or how else "???", subtitle=sub)
+            icon = Gtk.Label(label=emoji if earned else "🔒", css_classes=["title-1"] + ([] if earned else ["dim-label"]))
+            row.add_prefix(icon)
+            group.add(row)
+        page.add(group)
+        tv.set_content(page)
+        win.set_content(tv)
+        win.present()
+
+    def _pet(self):
+        """Clicking the cat: a little chirp, a wink and its next line. Ten times earns a secret badge."""
+        self._sound("chirp")
+        self.cat.play("wink", 0.6)
+        self.cat.next_line()
+        if self._bump("pets") >= 10:
+            self._award("curious")
 
     def _switch_changed(self, act, value):
         act.set_state(value)
         on = value.get_boolean()
-        save_setting(act.get_name(), on)
-        if act.get_name() == "sounds":
+        name = act.get_name()
+        if name == "cat" and on and not HAVE_CAIRO:
+            act.set_state(GLib.Variant("b", False))
+            self._toast("The cat needs python3-gi-cairo (sudo apt install python3-gi-cairo)")
+            return
+        save_setting(name, on)
+        if name == "sounds":
             self.sounds_on = on
             self._sound("open")   # a sample, so you hear what you turned on
-        else:
+        elif name == "tips":
             self.tips_on = on
+        else:
+            self.cat_on = on
+            self.cat.set_visible(on)
+            (self.cat.start if on else self.cat.stop)()
 
     def _index(self, entry):
         return next((k for k, s in enumerate(self.sessions) if s is entry), None)
@@ -1012,9 +1439,13 @@ class Window(Adw.ApplicationWindow):
         self._sound("star" if on else "unstar")
         name = entry.get("name") or short_path(entry["folder"])
         if not on:
-            self._toast(f"Removed {name} from favorites")
-        elif not self._tip("star", "favorites stay at the top. Ctrl+Shift+Enter opens them all."):
-            self._toast(f"★ {name} is a favorite")
+            self._say("ear", f"Removed {name} from favorites. Back with the others.")
+            return
+        awarded = self._award("first-star")
+        if sum(1 for s in self.sessions if s.get("star")) >= 5:
+            awarded = self._award("collector") or awarded
+        if not awarded and not self._tip("star", "favorites stay at the top. Ctrl+Shift+Enter opens them all."):
+            self._say("hop", f"★ Ooh, {name} is a favorite now!")
 
     def _ticked(self):
         """The ticked entries (not positions), taken before the list changes order."""
@@ -1107,13 +1538,19 @@ class Window(Adw.ApplicationWindow):
         self.sessions = favorites_first(self.sessions)
         save_sessions(self.sessions)
         self._rebuild_keeping(ticked, flash=moved if crossed and moved.get("star") else None)
+        awarded = self._award("tidy-paws")
         if not crossed:
             self._sound("drop")
+            if not awarded and self.cat_on:
+                self.cat.react("nod", self.cat.rng.choice(["Tidy!", "Nice spot for it.", "Neat."]))
             return False
         self._sound("star" if moved.get("star") else "unstar")
+        if moved.get("star"):
+            awarded = self._award("first-star") or awarded
         name = moved.get("name") or short_path(moved["folder"])
-        if not self._tip("drag-star", "drag a row into Favorites to star it, or out to unstar it."):
-            self._toast(f"★ {name} is a favorite" if moved.get("star") else f"Removed {name} from favorites")
+        if not awarded and not self._tip("drag-star", "drag a row into Favorites to star it, or out to unstar it."):
+            self._say("hop" if moved.get("star") else "ear", f"★ {name} is a favorite now!" if moved.get("star")
+                      else f"Removed {name} from favorites.")
         return False
 
     def _vadjustment(self):
@@ -1162,6 +1599,11 @@ class Window(Adw.ApplicationWindow):
         act.set_state(value)
         self.mode = value.get_string()
         save_mode(self.mode)
+        modes = self._stats().get("modes", [])
+        if self.mode not in modes:
+            self._set_stat("modes", modes + [self.mode])
+            if len(set(modes + [self.mode])) >= len(MODES):
+                self._award("explorer")
         idx = [m[0] for m in MODE_ROWS].index(self.mode)
         if self.mode_row.get_selected() != idx:
             self.mode_row.set_selected(idx)
@@ -1190,22 +1632,33 @@ class Window(Adw.ApplicationWindow):
         if errs:
             self._toast(errs[0])
             return
-        self._count_opens([s])
+        awarded = self._count_opens([s])
         self._sound("open")
-        if s.get("opens", 0) >= 3 and not s.get("star") and self._tip(
+        if s.get("opens", 0) >= 3 and not s.get("star") and not awarded and self._tip(
                 "suggest-star", f"you open {name} a lot. Star it to keep it at the top?",
                 button="Star it", on_click=lambda: self._set_star(s, True)):
             return
-        self._toast(f"Opened {name}")
+        if not awarded:
+            self._say("wave", self.cat.rng.choice([f"Opened {name}. Off you go!", f"Opened {name}. Have fun!",
+                                                   f"Opened {name}. Good luck in there!"]))
 
     def _count_opens(self, entries):
         """Count how often each entry is opened from the window (it's how the launcher knows which ones
-        you use most). Not counted with --dry-run. Saved without rebuilding the list."""
+        you use most), and give the badges that go with opening. Not counted with --dry-run. Saved
+        without rebuilding the list. Returns True if a badge was given."""
         if DRY_RUN:
-            return
+            return False
         for s in entries:
             s["opens"] = int(s.get("opens", 0)) + 1
         save_sessions(self.sessions)
+        total = self._bump("opened", len(entries))
+        hour = self.cat.now().hour
+        awarded = False
+        for bid, ok in (("regular", total >= 25), ("marathon", total >= 100),
+                        ("early-bird", hour < 7), ("night-owl", hour >= 23)):
+            if ok:
+                awarded = self._award(bid) or awarded
+        return awarded
 
     def _open_folder(self, _btn):
         dlg = Gtk.FileDialog(title="Open a terminal in…")
@@ -1233,7 +1686,8 @@ class Window(Adw.ApplicationWindow):
         self.sessions.append(entry)
         save_sessions(self.sessions)
         self._rebuild()
-        self._toast(f"Added {entry['name']} to the list")
+        if not self._award("wayfinder"):
+            self._toast(f"Added {entry['name']} to the list")
 
     def _open_many(self, favorites=False):
         """Open the ticked entries (nothing ticked: all of them), or with favorites=True the starred ones."""
@@ -1255,9 +1709,12 @@ class Window(Adw.ApplicationWindow):
         if errs:
             self._toast(errs[0])
             return
-        self._count_opens(picked)
+        awarded = self._count_opens(picked)
         self._sound("open")
-        self._toast(("★ " if favorites else "") + what)
+        if len(picked) >= 3:
+            awarded = self._award("squad") or awarded
+        if not awarded:
+            self._say("wave", ("★ " if favorites else "") + what + (". A whole squad!" if len(picked) >= 3 else "."))
 
     def _edit(self, i):
         def on_save(entry):

@@ -88,6 +88,9 @@ It's written whenever you change **Open in**. The other keys:
 | `sounds` | **☰ → Sounds**; missing means on |
 | `tips` | **☰ → Tips**; missing means on |
 | `tips_seen` | the tips already shown, so each shows once. **☰ → Show tips again** empties it |
+| `cat` | **☰ → Byte the cat**; missing means shown |
+| `badges` | the badges you've found, with the date of each |
+| `stats` | the counters behind the badges: `opened` (terminals opened), `pets` (clicks on the cat), `modes` (the **Open in** choices you've used) |
 
 The sounds themselves are made on first use and kept in `~/.cache/terminal-launcher/sounds/`
 (safe to delete; they're made again).

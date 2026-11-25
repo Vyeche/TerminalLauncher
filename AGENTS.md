@@ -55,6 +55,12 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
   short and quiet, never with `--dry-run`, and off with ☰ → Sounds or the desktop's event-sounds
   switch. Animations are CSS in `APP_CSS` and skipped when the desktop turns animations off. A tip
   shows once (`tips_seen`), at the moment it's useful, and fits on one line.
+- **Byte the cat** (`Cat`, `draw_cat`, `CAT_*`, `BADGES`): never needs looking after, never goes
+  online (so no weather), and stays quiet: one voice per moment (the cat says tips and badges; toasts
+  are for errors and buttons), at most one extra sound per action (a badge's sparkle beats a tip's
+  chime). "Did you know" lines must be things anyone can check in a shell or the app; jokes are
+  original. No badge rewards turning on start at login. Its timers stop when it's hidden, and its
+  clock (`Cat.now`) is pinned in tests. Every control has a tooltip; the cat has an accessible label.
 - New agent types go in `KINDS` and `AGENTS` (label, new-session command, resume command). The
   "recent sessions" picker reads only Claude Code's history; don't guess at other agents' stores.
 

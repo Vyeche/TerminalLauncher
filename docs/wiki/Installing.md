@@ -15,9 +15,11 @@ Pop!_OS 24.04 COSMIC and recent Ubuntu and Fedora GNOME desktops already have th
 
 | Distro | Command |
 | --- | --- |
-| Pop!_OS, Ubuntu, Debian | `sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` |
-| Fedora | `sudo dnf install python3-gobject gtk4 libadwaita` |
-| Arch | `sudo pacman -S python-gobject gtk4 libadwaita` |
+| Pop!_OS, Ubuntu, Debian | `sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1` |
+| Fedora | `sudo dnf install python3-gobject python3-cairo gtk4 libadwaita` |
+| Arch | `sudo pacman -S python-gobject python-cairo gtk4 libadwaita` |
+
+The cairo part only draws the cat; without it the launcher works and the cat stays hidden.
 
 Too old: Ubuntu 22.04 (libadwaita 1.1) and Debian 12 ship a libadwaita older than 1.4.
 Ubuntu 24.04, Pop!_OS 24.04 and newer are fine.
