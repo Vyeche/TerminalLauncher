@@ -86,9 +86,15 @@ Small things that make it nicer to use and teach it as you go, all quiet and eas
 tips back. Sounds also stay off when your desktop's own event sounds are off.
 
 ### Byte, the launcher's cat
-A little ginger cat sits at the bottom of the window. You never have to feed it or look after it; it
-just keeps you company:
+A little ginger cat lives in the window. You never have to feed it or look after it; it just keeps
+you company:
+- It **walks around**: along the bottom of the window, up into the empty space beside the list, over
+  to the row you just starred or opened, and it **peeks in** from the window's edges. Now and then it
+  **goes outside** for a while ("Going out for a stretch.") and comes back from the other side. It
+  walks along the floor and climbs the edges, so it never walks across your list. Rest the pointer on
+  it and it makes room; while you drag a row it lets the drop through.
 - It **blinks, winks, swishes its tail, twitches an ear** and looks around, and **naps** late at night.
+- What it says shows in a **speech bubble** next to it, which fades after a few seconds.
 - It **says something** now and then: good morning with today's date, a **word of the day** (a
   computing word, explained plainly), a **joke of the day**, or a "did you know" shell tip. Click it
   for the next one (it says *mrrp?*).
@@ -101,8 +107,8 @@ just keeps you company:
   read-only, and shows only a command's name, like `npm test`, never its arguments.
 - **Badges:** twelve little quests to find, like your first star, opening 25 terminals, opening one
   before 7 in the morning or after 11 at night, trying all three **Open in** choices, and one secret.
-  Earning one plays a small sparkle and the cat cheers. **🏅** next to the cat (or **☰ → Badges…**)
-  shows what you've found and hints at the rest.
+  Earning one plays a small sparkle and the cat cheers. **☰ → Badges…** shows what you've found and
+  hints at the rest (the cat's tooltip shows the count).
 
 ![Byte the cat at the bottom of the window: it blinks, gets a click (winks and says the word of the day), then hops when a star earns "New badge: First star!"](docs/images/gifs/cat.gif)
 

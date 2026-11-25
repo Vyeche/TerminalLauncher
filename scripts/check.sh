@@ -136,6 +136,28 @@ assert P(win("x", False, "/srv/web-site"), {"/srv/web-site": "Website redesign"}
 assert P(win("Docs site", True, "/srv/docs"))[1]["tab"] == "Docs site"
 EOF
 
+echo "Byte roaming (where it can go, how it walks)"
+python3 - "$APP" <<'EOF' && ok "walks at its speed and arrives; floor, margins only when there's room, peeks, outside" || bad "roaming"
+import importlib.util, random, sys
+spec = importlib.util.spec_from_file_location("tl", sys.argv[1]); tl = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tl)
+x, y, arrived = tl.cat_step((0, 0), (300, 0), 1.0)
+assert (round(x), y, arrived) == (round(tl.CAT_SPEED), 0, False), (x, y)
+assert tl.cat_step((0, 0), (3, 4), 1.0) == (3, 4, True)
+assert tl.cat_route((10, 800), (680, 300), 800) == [(680, 800), (680, 300)], "floor first, then up the margin"
+assert tl.cat_route((680, 300), (10, 800), 800) == [(680, 800), (10, 800)], "down first, then along the floor"
+assert tl.cat_route((10, 800), (400, 800), 800) == [(400, 800)] and tl.cat_route((5, 5), (5, 5), 800) == [(5, 5)]
+r, S, W, H = random.Random(1), 64, 760, 900
+fx, fy = tl.cat_spot("floor", W, H, S, r)
+assert 8 <= fx <= W - S - 8 and fy == H - S - 6, (fx, fy)
+assert tl.cat_spot("margin", W, H, S, r, (100, 200, 560, 500), "left")[0] == (100 - S) / 2
+assert tl.cat_spot("margin", W, H, S, r, (40, 200, 680, 500), "left") is None, "no room, no margin spot"
+assert tl.cat_spot("margin", W, H, S, r, None) is None
+px, _ = tl.cat_spot("peek", W, H, S, r, side="left"); assert -S < px < 0, px
+px, _ = tl.cat_spot("peek", W, H, S, r, side="right"); assert W - S < px < W, px
+assert tl.cat_spot("outside", W, H, S, r, side="right")[0] > W and tl.cat_spot("outside", W, H, S, r, side="left")[0] < -S
+EOF
+
 echo "Login entry (save_sessions keeps the autostart file in step)"
 python3 - "$APP" <<'EOF' && ok "created while marked, removed when none is" || bad "autostart file out of step"
 import importlib.util, sys
@@ -322,7 +344,20 @@ def act(app):
         for _ in range(10):
             w._pet()
         assert "curious" in w._badges() and tl.load_settings()["stats"]["pets"] == 10
-        assert w.cat.badges_btn.get_label() == f"🏅 {len(w._badges())}/{len(tl.BADGES)}", w.cat.badges_btn.get_label()
+        assert f"🏅 {len(w._badges())}/{len(tl.BADGES)} badges" in w.cat.tip_base, w.cat.tip_base
+        # Roaming: outside and back, a reaction brings it back, a row visit, drags pass through
+        import random
+        w.cat.rng = random.Random(7)
+        w.cat.wander("outside", side="right")
+        assert w.cat.spot == "away" and w.cat.away_until > time.monotonic(), w.cat.spot
+        w.cat.react("hop", "hello")
+        assert w.cat.spot == "floor" and w.cat.label.get_label() == "hello", (w.cat.spot, w.cat.label.get_label())
+        w.cat.visit(w.rows[0])
+        assert w.cat.spot == "row", w.cat.spot
+        w.cat.on_scroll(); assert w.cat.spot == "floor", "a scroll left it beside a row"
+        w.cat.passthrough(True); assert not w.cat.area.get_can_target()
+        w.cat.passthrough(False); assert w.cat.area.get_can_target()
+        w.cat.stop()
         w.cat.start(); assert w.cat.timers, "the cat's timer didn't start"
         w.lookup_action("cat").change_state(GLib.Variant("b", False))
         assert not w.cat.get_visible() and not w.cat.timers, "hiding the cat left it running"

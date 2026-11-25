@@ -3,6 +3,13 @@
 Changes you'd notice, newest first. To get them: `git pull` in your clone, then close and reopen the
 launcher (see [Installing](Installing#updating)).
 
+## 2026-11-25 (evening)
+- **Byte walks around:** it no longer sits in a bar at the bottom. It walks along the floor of the
+  window, climbs up beside the list, visits the row you just starred or opened, peeks in from the
+  edges and now and then goes outside for a while. Its words show in a speech bubble that fades. It
+  never walks across your list, and it gets out of the way of the pointer and of drags.
+  See [Byte the cat and badges](Byte-the-Cat#where-it-goes).
+
 ## 2026-11-25 (later)
 - **Byte the cat:** a little ginger cat at the bottom of the window blinks, winks, naps at night,
   reacts to what you do, and says something now and then: the date, a word of the day, a joke, a

@@ -1,9 +1,25 @@
 # Byte the cat and badges
 
-Byte is a small ginger cat at the bottom of the launcher's window. You never have to feed it, play
+Byte is a small ginger cat that lives in the launcher's window. You never have to feed it, play
 with it or look after it: it's just there, and it does little things.
 
 ![Byte at the bottom of the window: it blinks, gets a click (winks and says the word of the day), then hops when a star earns "New badge: First star!"](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/cat.gif)
+
+## Where it goes
+Byte floats over the window and moves around on its own, every half a minute or so:
+- **the floor**: along the bottom of the window (the list keeps a little room there for it);
+- **beside the list**: up in the empty margins when the window is wide enough;
+- **next to a row** you just starred, opened or dragged, for a few seconds;
+- **peeking in** from the left or right edge, half outside the window;
+- **outside**: it walks off one edge ("Going out for a stretch.") and comes back 20 to 60 seconds
+  later from the other one ("Back! I saw a bird."). If it has something to tell you meanwhile, it
+  comes straight back.
+
+It walks along the floor and climbs straight up the margins and edges, so it never walks across your
+list. Only the cat itself catches clicks: the space around it and its speech bubble let them
+through. Rest the pointer on it for a second and it walks out of the way; while you drag a row it
+lets the drop through. On a Wayland desktop an app can't put its own windows anywhere on the screen,
+which is why Byte stays inside the launcher's window (and peeks over its edges).
 
 ## What it does
 - **Moves on its own:** it blinks every few seconds, and now and then winks, swishes its tail, twitches
@@ -49,8 +65,9 @@ The words, jokes and tips are built into the launcher: it never goes online. Tha
 doesn't show the weather.
 
 ## Badges
-Twelve little quests. Earning one plays a small sparkle and Byte cheers. **🏅 N/12** next to the
-cat, or **☰ → Badges…**, lists them: the ones you've found with the date, and a hint for the rest.
+Twelve little quests. Earning one plays a small sparkle and Byte cheers. **☰ → Badges…** lists
+them: the ones you've found with the date, and a hint for the rest. Byte's tooltip shows how many you
+have.
 
 ![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/badges.png)
 
