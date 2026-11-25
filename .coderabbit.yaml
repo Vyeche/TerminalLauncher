@@ -47,7 +47,7 @@ reviews:
         and every download to a SHA-256, persist-credentials: false.
     - path: "docs/**"
       instructions: >-
-        User docs: plain, friendly, short words. Keep them in step with behaviour (README and the
+        User docs: plain, friendly, short words. Keep them in step with behavior (README and the
         wiki), with a line in docs/wiki/Whats-New.md for user-visible changes. No personal data:
         made-up names and paths only.
 knowledge_base:

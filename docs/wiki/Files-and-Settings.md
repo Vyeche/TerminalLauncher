@@ -56,11 +56,13 @@ A list of entries, in the order the window shows them. A made-up example:
 | `session` | agents only: the session ID to resume; empty starts a new session |
 | `command` | `command` only: what to run |
 | `autostart` | `true` to open at login. Only written when on; missing means off |
+| `star` | `true` for a favorite. Only written when on. Favorites are kept first in the file |
+| `opens` | how many times you opened it from the window (for the "Star it" tip). Not counted with `--dry-run` |
 
 ### Editing it by hand
 It's plain JSON, so you can, with care:
 - **Close the launcher first.** The window keeps the list in memory and writes all of it back the
-  next time you add, edit, move or remove something, which would undo your edit.
+  next time you add, edit, move, star, remove or open something, which would undo your edit.
 - **Keep a copy.** If the file isn't valid JSON, the launcher shows an empty list (and prints
   `can't read …` when started from a terminal). Don't add anything then: the next save would replace
   the broken file. Fix the JSON, then reopen the launcher.
@@ -70,7 +72,7 @@ It's plain JSON, so you can, with care:
 
 ## settings.json
 ```json
-{"open_mode": "tabs"}
+{"open_mode": "tabs", "move_to_monitor": "down", "sounds": true, "tips": true, "tips_seen": ["star", "tick"]}
 ```
 | `open_mode` | **Open in** |
 | --- | --- |
@@ -78,7 +80,17 @@ It's plain JSON, so you can, with care:
 | `tabs` | One new window (also used when the file is missing or unreadable) |
 | `windows` | Separate windows |
 
-It's written whenever you change **Open in**.
+It's written whenever you change **Open in**. The other keys:
+
+| Key | Meaning |
+| --- | --- |
+| `move_to_monitor` | **Move to monitor**: `down`, `up`, `left`, `right`, or empty / missing to leave windows where the desktop puts them ([Open in](Open-In-Modes#move-to-monitor-cosmic-more-than-one-screen)) |
+| `sounds` | **☰ → Sounds**; missing means on |
+| `tips` | **☰ → Tips**; missing means on |
+| `tips_seen` | the tips already shown, so each shows once. **☰ → Show tips again** empties it |
+
+The sounds themselves are made on first use and kept in `~/.cache/terminal-launcher/sounds/`
+(safe to delete; they're made again).
 
 ## Coming from Claude Launcher
 Terminal Launcher is the renamed **Claude Launcher**. Moving over is automatic:

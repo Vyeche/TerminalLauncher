@@ -75,4 +75,4 @@ The picker is only for Claude Code. For omp and opencode, copy the ID from the a
 - **Name** is what the list shows. Left empty, the folder's name is used.
 - **Folder** is where the terminal starts. `~` means your home folder. A folder that doesn't exist is
   allowed (you can save it and create the folder later); until it exists the row is red and its **▶**
-  is greyed out.
+  is grayed out.

@@ -66,7 +66,7 @@ ticked it opens everything: *Open all in tabs*, *Add all to kitty*, *Open all in
 
 ## 6. Put them in order
 Drag a row by its handle (the dotted grip at its left edge) and drop it on another row: it takes that row's
-place. A line in your accent colour shows where it will land, and while you drag near the top or
+place. A line in your accent color shows where it will land, and while you drag near the top or
 bottom edge the list scrolls. The new order is saved at once, and your ticks stay as they were.
 
 ![Dragging a row by its handle: a line shows where it will land, and the row moves there when dropped](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/drag.gif)
@@ -74,7 +74,19 @@ bottom edge the list scrolls. The new order is saved at once, and your ticks sta
 You can grab a row anywhere, not only by the handle. The handle shows once the list has two or more
 rows. **⋮ → Move up / Move down** also moves a row one step.
 
-## 7. Start some at login
+## 7. Star your favorites
+**☆** on a row makes it a favorite: it moves up into **★ Favorites** at the top of the window, its
+star turns gold with a little pop, and the row glows for a moment. **☆** again (or **⋮ → Remove from
+favorites**) puts it back at the top of **Terminals**.
+
+You can also drag a row into Favorites to star it, or drag a favorite down among the rest to
+unstar it. **Open favorites** in the **▾** menu next to the top button (**Ctrl+Shift+Enter**) opens
+all of them, the way **Open in** says.
+
+The third time you open a terminal with **▶** that isn't a favorite yet, a tip suggests starring
+it, with a **Star it** button (once: like every tip, it shows only one time).
+
+## 8. Start some at login
 Open **⋮ → Edit…** on a row and turn on **Start when I log in**. The row's second line then says
 *starts at login*. Next time you log in, the marked rows open by themselves, the way **Open in** is
 set. More: [Start at login](Start-At-Login).
@@ -86,11 +98,12 @@ mind.
 
 **The ⋮ menu** on each row:
 - **Edit…** changes the entry.
-- **Move up** / **Move down** move it one step.
+- **Add to favorites** / **Remove from favorites** stars it or not, like **☆**.
+- **Move up** / **Move down** move it one step, inside Favorites or inside Terminals.
 - **Remove from list…** asks first, then takes it off the list. Nothing else is deleted: an agent's
   session and its history stay where they are.
 
-**A red row** means its folder is gone; its **▶** is greyed out. Fix the folder with **Edit…**.
+**A red row** means its folder is gone; its **▶** is grayed out. Fix the folder with **Edit…**.
 
 **Shortcuts**
 
@@ -99,7 +112,13 @@ mind.
 | Ctrl+N | Add a terminal |
 | Ctrl+O | Folder…: open a terminal in any folder |
 | Ctrl+Enter | the button at the top: open the ticked rows, or all |
+| Ctrl+Shift+Enter | Open favorites |
 | Esc | close the Add / Edit dialog without saving |
 
-Ticks are cleared when you add, edit, remove or use **Move up** / **Move down**; dragging a row
-keeps them.
+Ticks stay when you add, drag, star, edit or use **Move up** / **Move down**; removing a row (or
+**Keep in list** after **Folder…**) clears them.
+
+**Sounds and tips:** the launcher plays a few soft sounds (a chime for a star, a pluck when something
+opens, a tock when a dragged row lands) and shows one short tip the first time something is useful,
+each tip only once. **☰** at the top right turns **Sounds** and **Tips** off, and **Show tips again**
+brings the tips back. To hear the sounds: `python3 terminal-launcher.py --sounds`.

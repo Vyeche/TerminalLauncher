@@ -10,27 +10,30 @@ omp, opencode), a plain shell in a project folder, or a command you run often. M
 ![The Terminal Launcher window: the Open in choice at the top, then the list of terminals, each row with a drag handle, a tick box, its name and folder, a ⋮ menu and a ▶ button](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/window.png)
 
 ```
- + Add   Folder…     Terminal Launcher      Open all in tabs ▾   the button at the top
+ + Add   Folder…     Terminal Launcher      Open all in tabs ▾  ☰   the button at the top; sounds and tips
                        3 terminals
- Open in                          One new window ▾               where things open (remembered)
+ Open in                          One new window ▾                  where things open (remembered)
+ Move to monitor                  Leave where… ▾                    COSMIC: move new windows to a monitor
 
- Terminals                                    Select all
- ⠿ ☐  api                                        ⋮  ▶           drag handle, tick, name, menu, open
+ ★ Favorites                                  Select all
+ ⠿ ☐  api                                     ★  ⋮  ▶           drag handle, tick, name, star, menu, open
       ~/code/api  ·  Claude · session 1a2b3c4d                    folder · type · session
- ⠿ ☐  dev server                                 ⋮  ▶
+
+ Terminals
+ ⠿ ☐  dev server                              ☆  ⋮  ▶
       ~/code/web  ·  Runs: npm run dev  ·  starts at login        opens by itself when you log in
- ⠿ ☐  old notes                                  ⋮  ▶           (red: the folder is gone)
+ ⠿ ☐  old notes                               ☆  ⋮  ▶           (red: the folder is gone)
       Folder not found: ~/notes-2023
 ```
 
 ## Start here
-- [Getting started](Getting-Started): your first entry, ▶, ticking rows, and **Open in**
+- [Getting started](Getting-Started): your first entry, ▶, ticking rows, **Open in** and favorites
 - [What's new](Whats-New): recent changes
 - [Installing](Installing): what you need on each distro, `install.sh`, removing, moving the folder
 - [Entry types](Entry-Types): Claude Code, omp, opencode, a plain terminal or a command, and the exact command each one runs
-- [Open in](Open-In-Modes): your kitty window, one GNOME Terminal window, or separate COSMIC windows
+- [Open in](Open-In-Modes): your kitty window, one GNOME Terminal window, or separate COSMIC windows, and **Move to monitor**
 - [Start at login](Start-At-Login): what opens when you log in, and how to check it
-- [Command line](Command-Line): `--all`, `--all-windows`, `--autostart`, `--dry-run`
+- [Command line](Command-Line): `--all`, `--all-windows`, `--autostart`, `--dry-run`, `--sounds`
 - [Files and settings](Files-and-Settings): `sessions.json`, `settings.json`, coming from Claude Launcher
 - [Troubleshooting](Troubleshooting)
 

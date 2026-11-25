@@ -8,16 +8,21 @@ coding agents (Claude Code, omp, opencode, a plain shell, or any command), each 
   At login:   python3 terminal-launcher.py --autostart    (only the entries marked "Start when I log in",
                                                            opened the way the launcher is set to open)
               add --dry-run to print what would open without opening anything
-  Install:    bash install.sh                             (adds the app-menu entry)
+  Sounds:     python3 terminal-launcher.py --sounds       (plays each of its little sounds once)
+  Install:   bash install.sh                             (adds the app-menu entry)
   Saved list: ~/.config/terminal-launcher/sessions.json
 """
+import array
 import json
+import math
 import os
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
+import wave
 from pathlib import Path
 
 import gi
@@ -218,6 +223,8 @@ def kitty_attach(entries):
         else:
             if not DRY_RUN:
                 return errs + ["kitty started but isn't answering; try again"]
+        if load_monitor():   # only a window we just opened; in the background so the UI stays responsive
+            threading.Thread(target=move_when_focused, args=(_kitty_focused, "kitty window")).start()
         rest = ok[1:]
     for e in rest:
         name = e.get("name") or Path(e["folder"]).name
@@ -242,17 +249,123 @@ MODES = {"kitty": ("Add to my open kitty window", "Add {n} to kitty", "Add all t
          "windows": ("Separate windows", "Open {n} in windows", "Open all in windows")}
 
 
-def load_mode():
+def load_settings():
     try:
-        m = json.loads(SETTINGS.read_text()).get("open_mode")
-        return m if m in MODES else "tabs"
+        s = json.loads(SETTINGS.read_text())
+        return s if isinstance(s, dict) else {}
     except (OSError, ValueError):
-        return "tabs"
+        return {}
+
+
+def save_setting(key, value):
+    s = load_settings()
+    s[key] = value
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps(s) + "\n")
+
+
+def load_mode():
+    m = load_settings().get("open_mode")
+    return m if m in MODES else "tabs"
 
 
 def save_mode(mode):
-    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps({"open_mode": mode}) + "\n")
+    save_setting("open_mode", mode)
+
+
+# ---------- moving a new window to another monitor (COSMIC) ----------
+# On Wayland an app can't choose its monitor; COSMIC puts new windows on the monitor it considers
+# active. If "Move to monitor" is set, the launcher presses COSMIC's own "move window to monitor"
+# shortcut (Super+Shift+Alt+arrow) through a short-lived virtual keyboard (/dev/uinput, which the
+# logged-in user may write to). It only does this when the window it just opened has focus, so it
+# can never move one of your other windows. Already on the far monitor? COSMIC then does nothing.
+MONITOR_ROWS = [  # (setting value, choice label)
+    ("", "Leave where the desktop puts them"),
+    ("down", "Monitor below"),
+    ("up", "Monitor above"),
+    ("left", "Monitor to the left"),
+    ("right", "Monitor to the right"),
+]
+_KEYS = {"meta": 125, "shift": 42, "alt": 56, "up": 103, "down": 108, "left": 105, "right": 106}
+
+
+def load_monitor():
+    m = load_settings().get("move_to_monitor") or ""
+    return m if m in dict(MONITOR_ROWS) else ""
+
+
+def press_move_shortcut(direction, still_focused=lambda: True):
+    """Press Super+Shift+Alt+<direction> on a temporary virtual keyboard. Returns an error or None.
+    `still_focused` is asked again after the keyboard's setup wait, just before the first key: if the
+    window lost focus meanwhile, nothing is pressed (so another window is never moved)."""
+    import fcntl
+    import struct
+    if DRY_RUN:
+        print("would press Super+Shift+Alt+" + direction.capitalize())
+        return None
+    try:
+        fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+    except OSError as ex:
+        return f"can't use /dev/uinput: {ex.strerror}"
+    try:
+        fcntl.ioctl(fd, 0x40045564, 1)                       # UI_SET_EVBIT EV_KEY
+        for code in _KEYS.values():
+            fcntl.ioctl(fd, 0x40045565, code)                # UI_SET_KEYBIT
+        name = b"Terminal Launcher monitor move"
+        os.write(fd, struct.pack("80sHHHHi256i", name, 0x06, 0x1, 0x1, 1, 0, *([0] * 256)))
+        fcntl.ioctl(fd, 0x5501)                              # UI_DEV_CREATE
+        time.sleep(0.6)                                      # let the desktop pick up the new keyboard
+        if not still_focused():
+            fcntl.ioctl(fd, 0x5502)                          # UI_DEV_DESTROY
+            return "skipped, it lost focus before the shortcut"
+
+        def ev(code, value):
+            os.write(fd, struct.pack("qqHHi", 0, 0, 1, code, value))
+            os.write(fd, struct.pack("qqHHi", 0, 0, 0, 0, 0))   # SYN_REPORT
+            time.sleep(0.02)
+        keys = [_KEYS["meta"], _KEYS["shift"], _KEYS["alt"], _KEYS[direction]]
+        for k in keys:
+            ev(k, 1)
+        time.sleep(0.05)
+        for k in reversed(keys):
+            ev(k, 0)
+        time.sleep(0.2)
+        fcntl.ioctl(fd, 0x5502)                              # UI_DEV_DESTROY
+        return None
+    except OSError as ex:
+        return f"virtual keyboard failed: {ex.strerror}"
+    finally:
+        os.close(fd)
+
+
+def move_when_focused(is_focused, what, wait=5.0):
+    """Wait up to `wait` seconds (a real deadline) for the window we opened to have focus, then move it.
+    is_focused(timeout) answers within `timeout` seconds. Logs the outcome."""
+    direction = load_monitor()
+    if not direction:
+        return
+    if DRY_RUN:
+        press_move_shortcut(direction)
+        return
+    deadline = time.monotonic() + wait
+    while (left := deadline - time.monotonic()) > 0:
+        if is_focused(left):
+            if time.monotonic() > deadline:   # the answer came too late: leave the window be
+                break
+            err = press_move_shortcut(direction, lambda: is_focused(1.0))
+            log(f"move {what} to monitor {direction}: " + (err or "ok"))
+            return
+        time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
+    log(f"move {what} to monitor {direction}: skipped, it never had focus")
+
+
+def _kitty_focused(timeout=3.0):
+    try:
+        r = subprocess.run([KITTY, "@", "--to", KITTY_SOCK, "ls"], capture_output=True,
+                           timeout=max(0.1, min(3.0, timeout)))
+        return any(w.get("is_focused") for w in json.loads(r.stdout or b"[]"))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
 
 
 # ---------- reading Claude's own session files (for titles and the "recent" picker) ----------
@@ -324,7 +437,91 @@ def recent_sessions(limit=30):
     return out
 
 
+# ---------- sounds ----------
+# A few tiny, quiet tones, made here (no sound files, no dependencies) the first time they're needed
+# and kept in ~/.cache/terminal-launcher/sounds/. They play with whichever of pw-play, paplay or aplay
+# is installed. Off with ☰ → Sounds, or with the desktop's own "event sounds" switch.
+SOUND_DIR = LOG.parent / "sounds"
+SOUND_VERSION = 1   # bump when the notes change, so the cached files are made again
+SOUND_PEAK = 0.18   # of full scale (about -15 dBFS): a soft tick, never an alert
+SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1)
+    "star": [(0.0, 784, 0.16, 1.0), (0.07, 1175, 0.24, 0.8)],                       # G5 → D6, up
+    "unstar": [(0.0, 659, 0.12, 0.8), (0.06, 494, 0.18, 0.7)],                      # E5 → B4, down
+    "open": [(0.0, 523, 0.08, 0.7), (0.035, 784, 0.12, 0.6)],                       # a short pluck
+    "drop": [(0.0, 330, 0.12, 0.9)],                                                 # a soft low tock
+    "tip": [(0.0, 880, 0.18, 0.5), (0.09, 1109, 0.18, 0.45), (0.18, 1319, 0.3, 0.4)],  # A5 C♯6 E6
+}
+
+
+def synth(notes, rate=44100):
+    """Soft marimba-like notes (a sine plus a quiet octave, 4 ms attack, quick decay), scaled so the
+    loudest sample is SOUND_PEAK."""
+    length = max(start + dur for start, _f, dur, _a in notes) + 0.02
+    buf = [0.0] * int(length * rate)
+    for start, freq, dur, amp in notes:
+        s0 = int(start * rate)
+        for k in range(int(dur * rate)):
+            t = k / rate
+            env = min(1.0, t / 0.004) * math.exp(-7.0 * t / dur)
+            buf[s0 + k] += amp * env * (math.sin(2 * math.pi * freq * t) + 0.25 * math.sin(4 * math.pi * freq * t))
+    peak = max(abs(x) for x in buf) or 1.0
+    return [x / peak * SOUND_PEAK for x in buf]
+
+
+def sound_file(name):
+    """The WAV file for one of SOUNDS, made on first use."""
+    path = SOUND_DIR / f"{name}-v{SOUND_VERSION}.wav"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        samples = array.array("h", (int(x * 32767) for x in synth(SOUNDS[name])))
+        tmp = path.with_suffix(".tmp")
+        with wave.open(str(tmp), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(samples.tobytes())
+        tmp.replace(path)
+    return path
+
+
+def play_sound(name):
+    """Play one of SOUNDS in the background. Silent with --dry-run (so trying things never makes a
+    noise) and when no player is installed."""
+    if DRY_RUN or name not in SOUNDS:
+        return
+    player = next((p for p in ("pw-play", "paplay", "aplay") if shutil.which(p)), None)
+    if not player:
+        return
+    try:
+        path = str(sound_file(name))
+        argv = [player, "-q", path] if player == "aplay" else [player, path]
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def favorites_first(sessions):
+    """The list with starred entries first, each part keeping its own order."""
+    return [s for s in sessions if s.get("star")] + [s for s in sessions if not s.get("star")]
+
+
 # ---------- UI ----------
+# The drop line for dragging, the gold star, and the small animations: a star that pops, a row that
+# glows softly when it becomes a favorite, and ▶ that gives a little press.
+APP_CSS = """
+row.drop-above { box-shadow: inset 0 2px @accent_color; }
+row.drop-below { box-shadow: inset 0 -2px @accent_color; }
+row.dragging { opacity: 0.4; }
+.star-btn:checked { color: #e5a50a; background: none; }
+@keyframes tl-star-pop { 0% { transform: scale(1); } 40% { transform: scale(1.45) rotate(-14deg); }
+                         100% { transform: scale(1); } }
+.star-pop { animation: tl-star-pop 420ms ease-out; }
+@keyframes tl-glow { from { background-color: alpha(#e5a50a, 0.22); } to { background-color: transparent; } }
+row.glow { animation: tl-glow 1300ms ease-out; }
+@keyframes tl-press { 0% { transform: scale(1); } 45% { transform: scale(0.82); } 100% { transform: scale(1); } }
+.press { animation: tl-press 260ms ease-out; }
+"""
 KIND_ICONS = {"claude": "chat-symbolic", "omp": "chat-symbolic", "opencode": "chat-symbolic",
               "terminal": "utilities-terminal-symbolic", "command": "system-run-symbolic"}
 KIND_HELP = {
@@ -519,9 +716,17 @@ class Window(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_NAME, default_width=720, default_height=640)
         self.sessions = load_sessions()
+        if favorites_first(self.sessions) != self.sessions:   # starred entries live at the top
+            self.sessions = favorites_first(self.sessions)
+            save_sessions(self.sessions)
         self.mode = load_mode()
+        settings = load_settings()
+        self.sounds_on = settings.get("sounds", True) is not False
+        self.tips_on = settings.get("tips", True) is not False
         self.checked = set()
         self.play_btns = []
+        self.groups = []
+        self._quiet = False      # True while ticks are put back after a rebuild (no tips then)
         self._drag_from = None   # index of the row being dragged
         self._scroll_tick = 0    # timer that scrolls the list while a drag is near its top or bottom
         self._scroll_speed = 0
@@ -533,10 +738,22 @@ class Window(Adw.ApplicationWindow):
         self.add_action(mode_act)
         for name, cb in (("edit", lambda i: self._edit(i)), ("move-up", lambda i: self._move(i, -1)),
                          ("move-down", lambda i: self._move(i, 1)), ("remove", lambda i: self._remove(i)),
-                         ("launch", lambda i: self._launch(i))):
+                         ("launch", lambda i: self._launch(i)),
+                         ("star", lambda i: self._set_star(self.sessions[i]))):
             a = Gio.SimpleAction.new(name, GLib.VariantType.new("i"))
             a.connect("activate", lambda _a, v, cb=cb: cb(v.get_int32()))
             self.add_action(a)
+        self.favs_act = Gio.SimpleAction.new("open-favs", None)
+        self.favs_act.connect("activate", lambda *_: self._open_many(favorites=True))
+        self.add_action(self.favs_act)
+        for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on)):
+            a = Gio.SimpleAction.new_stateful(name, None, GLib.Variant("b", on))
+            a.connect("change-state", self._switch_changed)
+            self.add_action(a)
+        again = Gio.SimpleAction.new("tips-again", None)
+        again.connect("activate", lambda *_: (save_setting("tips_seen", []),
+                                              self._toast("Tips will show again, each once")))
+        self.add_action(again)
 
         tv = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -556,8 +773,17 @@ class Window(Adw.ApplicationWindow):
         for key, label, _help in MODE_ROWS:
             section.append(label, f"win.mode::{key}")
         menu.append_section("Open in", section)
+        favs = Gio.Menu()
+        favs.append("Open favorites", "win.open-favs")
+        menu.append_section(None, favs)
+        primary = Gio.Menu()
+        primary.append("Sounds", "win.sounds")
+        primary.append("Tips", "win.tips")
+        primary.append("Show tips again", "win.tips-again")
+        header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=primary,
+                                       tooltip_text="Sounds and tips"))
         self.open_btn = Adw.SplitButton(menu_model=menu, css_classes=["suggested-action"],
-                                        dropdown_tooltip="Choose where terminals open")
+                                        dropdown_tooltip="Choose where terminals open, or open your favorites")
         self.open_btn.connect("clicked", lambda *_: self._open_many())
         header.pack_end(self.open_btn)
         tv.add_top_bar(header)
@@ -569,6 +795,16 @@ class Window(Adw.ApplicationWindow):
         self.mode_row.set_selected([m[0] for m in MODE_ROWS].index(self.mode))
         self.mode_row.connect("notify::selected", self._mode_row_changed)
         how.add(self.mode_row)
+        self.monitor_row = Adw.ComboRow(
+            title="Move to monitor", model=Gtk.StringList.new([m[1] for m in MONITOR_ROWS]),
+            subtitle="For a new kitty window and this window (COSMIC, Super+Shift+Alt+arrow)",
+            tooltip_text="Wayland lets the desktop pick the monitor. If set, the launcher presses COSMIC's "
+                         "\"move window to monitor\" shortcut for a window it just opened, only while that "
+                         "window has focus. Remembered.")
+        self.monitor_row.set_selected([m[0] for m in MONITOR_ROWS].index(load_monitor()))
+        self.monitor_row.connect("notify::selected",
+                                 lambda r, _p: save_setting("move_to_monitor", MONITOR_ROWS[r.get_selected()][0]))
+        how.add(self.monitor_row)
         self.page.add(how)
         self.group = None
         edge = Gtk.DropControllerMotion()   # dragging a row near the top or bottom scrolls the list
@@ -594,16 +830,14 @@ class Window(Adw.ApplicationWindow):
         keys = Gtk.ShortcutController(scope=Gtk.ShortcutScope.GLOBAL)
         for trig, cb in (("<Control>n", lambda *_: self._edit(None) or True),
                          ("<Control>o", lambda *_: self._open_folder(None) or True),
-                         ("<Control>Return", lambda *_: self._open_many() or True)):
+                         ("<Control>Return", lambda *_: self._open_many() or True),
+                         ("<Control><Shift>Return", lambda *_: self._open_many(favorites=True) or True)):
             keys.add_shortcut(Gtk.Shortcut(trigger=Gtk.ShortcutTrigger.parse_string(trig),
                                            action=Gtk.CallbackAction.new(cb)))
         self.add_controller(keys)
 
-        css = Gtk.CssProvider()   # a line where a dragged row will land
-        rules = ("row.drop-above { box-shadow: inset 0 2px @accent_color; }"
-                 "row.drop-below { box-shadow: inset 0 -2px @accent_color; }"
-                 "row.dragging { opacity: 0.4; }")
-        css.load_from_string(rules)
+        css = Gtk.CssProvider()
+        css.load_from_string(APP_CSS)
         Gtk.StyleContext.add_provider_for_display(self.get_display(), css,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self._rebuild()
@@ -611,21 +845,32 @@ class Window(Adw.ApplicationWindow):
     def _toast(self, msg):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(msg), timeout=3))
 
-    def _rebuild(self):
-        if self.group:
-            self.page.remove(self.group)
+    def _rebuild(self, flash=None):
+        """Build the list again: starred entries in Favorites at the top, the rest under Terminals.
+        `flash` is an entry whose row gets the star/glow animation once it's shown."""
+        for g in self.groups:
+            self.page.remove(g)
+        self.groups = []
         self.play_btns = []
+        self.star_btns = []
         self.checked = set()
         self.ticks = []
         n = len(self.sessions)
+        nfav = sum(1 for s in self.sessions if s.get("star"))
+        self.favs_act.set_enabled(bool(nfav))
         self.title.set_subtitle(f"{n} terminal{'s' if n != 1 else ''}" if n else "")
+        fav_group = Adw.PreferencesGroup(
+            title="★ Favorites",
+            description="Starred terminals stay up here. Open them all with Open favorites in the ▾ menu "
+                        "at the top (Ctrl+Shift+Enter).")
         self.group = Adw.PreferencesGroup(
             title="Terminals",
-            description="▶ opens one now. Tick a few, then use the button at the top to open them together.")
+            description="▶ opens one now. Tick a few, then use the button at the top to open them together. "
+                        "☆ adds one to your favorites." if not nfav else None)
         self.select_btn = Gtk.Button(label="Select all", css_classes=["flat"], valign=Gtk.Align.CENTER,
                                      tooltip_text="Tick every terminal (or clear the ticks)")
         self.select_btn.connect("clicked", self._toggle_all)
-        self.group.set_header_suffix(self.select_btn)
+        (fav_group if nfav else self.group).set_header_suffix(self.select_btn)
 
         for i, s in enumerate(self.sessions):
             kind = s.get("kind", "claude")
@@ -653,20 +898,33 @@ class Window(Adw.ApplicationWindow):
                                          tooltip_text="Drag to move this row up or down the list"))
                 self._add_drag(row, i)
 
+            starred = bool(s.get("star"))
             menu = Gio.Menu()
             menu.append("Edit…", f"win.edit({i})")
-            moves = Gio.Menu()
-            if i > 0:
+            menu.append("Remove from favorites" if starred else "Add to favorites", f"win.star({i})")
+            moves = Gio.Menu()   # moves stay inside Favorites or Terminals; the star moves between them
+            if i > 0 and bool(self.sessions[i - 1].get("star")) == starred:
                 moves.append("Move up", f"win.move-up({i})")
-            if i < n - 1:
+            if i < n - 1 and bool(self.sessions[i + 1].get("star")) == starred:
                 moves.append("Move down", f"win.move-down({i})")
             if moves.get_n_items():
                 menu.append_section(None, moves)
             danger = Gio.Menu()
             danger.append("Remove from list…", f"win.remove({i})")
             menu.append_section(None, danger)
+            star = Gtk.ToggleButton(icon_name="starred-symbolic" if starred else "non-starred-symbolic",
+                                    active=starred, valign=Gtk.Align.CENTER,
+                                    css_classes=["flat", "circular", "star-btn"],
+                                    tooltip_text="Remove from favorites" if starred
+                                    else "Add to favorites (it moves to the top)")
+            # connected after active= is set, so building the row doesn't star it; the rebuild waits for
+            # idle so this button isn't destroyed inside its own signal
+            star.connect("toggled", lambda _b, s=s: GLib.idle_add(lambda: self._set_star(s) and False))
+            self.star_btns.append(star)
+            row.add_suffix(star)
             more = Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=menu, valign=Gtk.Align.CENTER,
-                                  css_classes=["flat"], tooltip_text="Edit, move or remove (or drag the row to move it)")
+                                  css_classes=["flat"],
+                                  tooltip_text="Edit, star, move or remove (or drag the row to move it)")
             row.add_suffix(more)
 
             play = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER,
@@ -674,12 +932,106 @@ class Window(Adw.ApplicationWindow):
             play.connect("clicked", lambda _b, i=i: self._launch(i))
             self.play_btns.append(play)
             row.add_suffix(play)
-            self.group.add(row)
+            (fav_group if starred else self.group).add(row)
+            if s is flash:
+                GLib.idle_add(lambda r=row, b=star: (self._animate(r, "glow", 1300),
+                                                     self._animate(b, "star-pop", 420)) and False)
 
-        self.page.add(self.group)
+        if nfav:
+            self.groups.append(fav_group)
+        if nfav < n:
+            self.groups.append(self.group)
+        for g in self.groups:
+            self.page.add(g)
         self.stack.set_visible_child_name("list" if n else "empty")
         self.open_btn.set_sensitive(bool(n))
         self._update_open_label()
+
+    def _animate(self, widget, css_class, ms):
+        """Play one of the small CSS animations on a widget (skipped when the desktop turns animations off)."""
+        if not Gtk.Settings.get_default().get_property("gtk-enable-animations"):
+            return
+        widget.remove_css_class(css_class)
+        widget.add_css_class(css_class)
+        GLib.timeout_add(ms + 50, lambda: widget.remove_css_class(css_class) and False)
+
+    def _sound(self, name):
+        if self.sounds_on and Gtk.Settings.get_default().get_property("gtk-enable-event-sounds"):
+            play_sound(name)
+
+    def _tip(self, key, text, button=None, on_click=None):
+        """Show a tip once (ever), at the moment it's useful, with a soft chime. Returns True if shown."""
+        if not self.tips_on:
+            return False
+        seen = load_settings().get("tips_seen", [])
+        if not isinstance(seen, list):
+            seen = []
+        if key in seen:
+            return False
+        save_setting("tips_seen", seen + [key])
+        t = Adw.Toast(title=GLib.markup_escape_text(f"Tip: {text}"), timeout=8)
+        if button:
+            t.set_button_label(button)
+            t.connect("button-clicked", lambda *_: on_click())
+        self.toasts.add_toast(t)
+        # a tip usually comes with another sound (a star, an open): chime after it, not over it
+        GLib.timeout_add(450, lambda: self._sound("tip") and False)
+        return True
+
+    def _switch_changed(self, act, value):
+        act.set_state(value)
+        on = value.get_boolean()
+        save_setting(act.get_name(), on)
+        if act.get_name() == "sounds":
+            self.sounds_on = on
+            self._sound("open")   # a sample, so you hear what you turned on
+        else:
+            self.tips_on = on
+
+    def _index(self, entry):
+        return next((k for k, s in enumerate(self.sessions) if s is entry), None)
+
+    def _set_star(self, entry, on=None):
+        """Star or unstar an entry. Starred ones move to the end of Favorites; unstarred ones to the
+        top of Terminals."""
+        i = self._index(entry)
+        if i is None:
+            return
+        on = not entry.get("star") if on is None else on
+        if bool(entry.get("star")) == on:
+            return
+        ticked = self._ticked()
+        self.sessions.pop(i)
+        if on:
+            entry["star"] = True
+        else:
+            entry.pop("star", None)
+        self.sessions.insert(sum(1 for s in self.sessions if s.get("star")), entry)
+        save_sessions(self.sessions)
+        self._rebuild_keeping(ticked, flash=entry if on else None)
+        self._sound("star" if on else "unstar")
+        name = entry.get("name") or short_path(entry["folder"])
+        if not on:
+            self._toast(f"Removed {name} from favorites")
+        elif not self._tip("star", "favorites stay at the top. Ctrl+Shift+Enter opens them all."):
+            self._toast(f"★ {name} is a favorite")
+
+    def _ticked(self):
+        """The ticked entries (not positions), taken before the list changes order."""
+        return [self.sessions[k] for k in self.checked if k < len(self.sessions)]
+
+    def _rebuild_keeping(self, ticked, flash=None):
+        """Rebuild, ticking `ticked` (entries) again and keeping the scroll position."""
+        adj = self._vadjustment()
+        top = adj.get_value() if adj else None
+        self._rebuild(flash=flash)
+        self._quiet = True
+        for k, s in enumerate(self.sessions):
+            if any(s is t for t in ticked):
+                self.ticks[k].set_active(True)
+        self._quiet = False
+        if adj:
+            GLib.idle_add(lambda: adj.set_value(top) and False)
 
     def _add_drag(self, row, i):
         """Let a row be dragged onto another row to move it there."""
@@ -739,21 +1091,29 @@ class Window(Adw.ApplicationWindow):
         row.add_controller(dst)
 
     def _move_to(self, i, j):
-        """Move entry i to position j (dragged rows land where they were dropped).
-        Ticks and the scroll position stay as they were."""
+        """Move entry i to position j (dragged rows land where they were dropped). Dropped on a
+        favorite, it becomes one; dropped among the rest, it stops being one. Ticks and the scroll
+        position stay as they were."""
         if not (0 <= i < len(self.sessions) and 0 <= j < len(self.sessions) and i != j):
             return False
-        ticked = [self.sessions[k] for k in self.checked]
-        adj = self._vadjustment()
-        top = adj.get_value() if adj else None
+        moved, target = self.sessions[i], self.sessions[j]
+        ticked = self._ticked()
+        crossed = bool(moved.get("star")) != bool(target.get("star"))
+        if target.get("star"):
+            moved["star"] = True
+        else:
+            moved.pop("star", None)
         self.sessions.insert(j, self.sessions.pop(i))
+        self.sessions = favorites_first(self.sessions)
         save_sessions(self.sessions)
-        self._rebuild()
-        for k, s in enumerate(self.sessions):
-            if any(s is t for t in ticked):
-                self.ticks[k].set_active(True)
-        if adj:
-            GLib.idle_add(lambda: adj.set_value(top) and False)
+        self._rebuild_keeping(ticked, flash=moved if crossed and moved.get("star") else None)
+        if not crossed:
+            self._sound("drop")
+            return False
+        self._sound("star" if moved.get("star") else "unstar")
+        name = moved.get("name") or short_path(moved["folder"])
+        if not self._tip("drag-star", "drag a row into Favorites to star it, or out to unstar it."):
+            self._toast(f"★ {name} is a favorite" if moved.get("star") else f"Removed {name} from favorites")
         return False
 
     def _vadjustment(self):
@@ -785,6 +1145,8 @@ class Window(Adw.ApplicationWindow):
     def _tick(self, i, on):
         (self.checked.add if on else self.checked.discard)(i)
         self._update_open_label()
+        if on and len(self.checked) == 2 and not self._quiet:
+            self._tip("tick", "ticked rows open together: the top button, or Ctrl+Enter.")
 
     def _toggle_all(self, _btn):
         on = len(self.checked) < len(self.sessions)
@@ -821,8 +1183,29 @@ class Window(Adw.ApplicationWindow):
 
     def _launch(self, i):
         s = self.sessions[i]
+        if i < len(self.play_btns):
+            self._animate(self.play_btns[i], "press", 260)
         errs = kitty_attach([s]) if self.mode == "kitty" else [e for e in [launch(s)] if e]
-        self._toast(errs[0] if errs else f"Opened {s.get('name') or short_path(s['folder'])}")
+        name = s.get("name") or short_path(s["folder"])
+        if errs:
+            self._toast(errs[0])
+            return
+        self._count_opens([s])
+        self._sound("open")
+        if s.get("opens", 0) >= 3 and not s.get("star") and self._tip(
+                "suggest-star", f"you open {name} a lot. Star it to keep it at the top?",
+                button="Star it", on_click=lambda: self._set_star(s, True)):
+            return
+        self._toast(f"Opened {name}")
+
+    def _count_opens(self, entries):
+        """Count how often each entry is opened from the window (it's how the launcher knows which ones
+        you use most). Not counted with --dry-run. Saved without rebuilding the list."""
+        if DRY_RUN:
+            return
+        for s in entries:
+            s["opens"] = int(s.get("opens", 0)) + 1
+        save_sessions(self.sessions)
 
     def _open_folder(self, _btn):
         dlg = Gtk.FileDialog(title="Open a terminal in…")
@@ -852,35 +1235,54 @@ class Window(Adw.ApplicationWindow):
         self._rebuild()
         self._toast(f"Added {entry['name']} to the list")
 
-    def _open_many(self):
-        if not self.sessions:
+    def _open_many(self, favorites=False):
+        """Open the ticked entries (nothing ticked: all of them), or with favorites=True the starred ones."""
+        if favorites:
+            picked = [s for s in self.sessions if s.get("star")]
+            if not picked:
+                self._toast("No favorites yet: ☆ on a row adds one")
+                return
+        else:
+            picked = [self.sessions[i] for i in sorted(self.checked)] or list(self.sessions)
+        if not picked:
             return
-        picked = [self.sessions[i] for i in sorted(self.checked)] or list(self.sessions)
         if self.mode == "kitty":
             errs, what = kitty_attach(picked), f"Added {len(picked)} tabs to kitty"
         elif self.mode == "tabs":
             errs, what = launch_tabs(picked), f"Opened {len(picked)} tabs in one window"
         else:
             errs, what = [e for e in (launch(s) for s in picked) if e], f"Opened {len(picked)} windows"
-        self._toast(errs[0] if errs else what)
+        if errs:
+            self._toast(errs[0])
+            return
+        self._count_opens(picked)
+        self._sound("open")
+        self._toast(("★ " if favorites else "") + what)
 
     def _edit(self, i):
         def on_save(entry):
             if i is None:
                 self.sessions.append(entry)
-            else:
+            ticked = self._ticked()
+            if i is not None:
+                old = self.sessions[i]
+                for key in ("star", "opens"):   # the dialog doesn't show these; keep them
+                    if key in old:
+                        entry[key] = old[key]
                 self.sessions[i] = entry
+                ticked = [entry if t is old else t for t in ticked]
             save_sessions(self.sessions)
-            self._rebuild()
+            self._rebuild_keeping(ticked)
             self._toast(f"Saved {entry['name']}")
         EditDialog(self, None if i is None else self.sessions[i], on_save).present()
 
     def _move(self, i, d):
         j = i + d
-        if 0 <= j < len(self.sessions):
+        if 0 <= j < len(self.sessions) and bool(self.sessions[i].get("star")) == bool(self.sessions[j].get("star")):
+            ticked = self._ticked()
             self.sessions[i], self.sessions[j] = self.sessions[j], self.sessions[i]
             save_sessions(self.sessions)
-            self._rebuild()
+            self._rebuild_keeping(ticked)
 
     def _remove(self, i):
         s = self.sessions[i]
@@ -909,7 +1311,22 @@ class App(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
 
     def do_activate(self):
-        win = self.get_active_window() or Window(self)
+        win = self.get_active_window()
+        if win is None:
+            win = Window(self)
+            if load_monitor():   # move the launcher's own window once, if it gets focus within 5 s
+                # GTK keeps this flag current on the main thread; the move's worker thread only reads
+                # it (it never calls GTK), and checks it again just before pressing the shortcut
+                state = {"active": False, "started": False, "until": time.monotonic() + 5.0}
+
+                def focus_changed(w, _pspec):
+                    state["active"] = w.is_active()
+                    if state["active"] and not state["started"] and time.monotonic() < state["until"]:
+                        state["started"] = True
+                        threading.Thread(target=move_when_focused, daemon=True,
+                                         args=(lambda _t=None: state["active"], "launcher window",
+                                               max(0.1, state["until"] - time.monotonic()))).start()
+                win.connect("notify::is-active", focus_changed)
         win.present()
 
 
@@ -940,6 +1357,12 @@ def log(msg):
 if __name__ == "__main__":
     args = sys.argv[1:]
     DRY_RUN = "--dry-run" in args
+    if "--sounds" in args:   # hear the launcher's sounds, one after another
+        for name in SOUNDS:
+            print(f"{name}: {sound_file(name)}")
+            play_sound(name)
+            time.sleep(0.8)
+        sys.exit(0)
     if "--autostart" in args:
         errs = autostart_main(args)
         if not DRY_RUN:

@@ -3,6 +3,18 @@
 Changes you'd notice, newest first. To get them: `git pull` in your clone, then close and reopen the
 launcher (see [Installing](Installing#updating)).
 
+## 2026-11-25
+- **Favorites:** **☆** on a row stars it, and it moves up into **★ Favorites** at the top. Drag a
+  row into Favorites to star it, or out to unstar it. **Open favorites** in the **▾** menu
+  (Ctrl+Shift+Enter) opens them all. See [Getting started](Getting-Started#7-star-your-favorites).
+- **Sounds, animations and tips:** soft sounds for a star, an open and a drop; a star that pops and a
+  row that glows; and short one-time tips at the moment they're useful, like a nudge to star a
+  terminal you open a lot. **☰** turns sounds and tips off. Hear the sounds with `--sounds`.
+- **Move to monitor (COSMIC):** with more than one screen, the launcher can move a new kitty window
+  and its own window to the monitor below, above, left or right. See
+  [Open in](Open-In-Modes#move-to-monitor-cosmic-more-than-one-screen).
+- **Ticks stay** when you edit a row or use **Move up / Move down** (dragging already kept them).
+
 ## 2026-11-24
 - **First public release.** Terminal Launcher is on GitHub: a small GTK 4 / libadwaita window that
   keeps a list of your terminals and coding-agent sessions (Claude Code, omp, opencode), a plain
@@ -13,7 +25,7 @@ launcher (see [Installing](Installing#updating)).
   itself ([Files and settings](Files-and-Settings#coming-from-claude-launcher)).
   A [40-second tour on YouTube](https://youtube.com/shorts/m40501aopTc) shows it in action.
 - **Drag to reorder:** with two or more rows, each row has a drag handle. Drag a row onto another
-  one and it takes that row's place. A line in your accent colour shows where it will land, the list scrolls while you drag
+  one and it takes that row's place. A line in your accent color shows where it will land, the list scrolls while you drag
   near its top or bottom edge, and your ticks and scroll position stay as they were. The new order is
   saved at once. **⋮ → Move up / Move down** are still there.
 
