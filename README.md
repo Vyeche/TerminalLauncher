@@ -9,6 +9,9 @@ log in**.
 
 ![The Terminal Launcher window: "Open in: My kitty window" at the top, then a list of eight made-up entries (Claude Code, omp and opencode sessions, terminals and commands), each with a drag handle, a tick box, a ⋮ menu and a ▶ button](docs/images/window.png)
 
+**[Watch the 40-second tour on YouTube](https://youtube.com/shorts/m40501aopTc)**: adding an entry,
+ticking a few, the three **Open in** modes and dragging rows, on a made-up list.
+
 **More:** the [wiki](https://github.com/Vyeche/TerminalLauncher/wiki) has a page for each part
 ([Getting started](https://github.com/Vyeche/TerminalLauncher/wiki/Getting-Started),
 [Troubleshooting](https://github.com/Vyeche/TerminalLauncher/wiki/Troubleshooting)).

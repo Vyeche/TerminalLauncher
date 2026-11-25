@@ -5,6 +5,8 @@ terminals you open every day and opens them with one click: coding-agent session
 omp, opencode), a plain shell in a project folder, or a command you run often. Mark any of them to
 **start when you log in**.
 
+**[Watch the 40-second tour on YouTube](https://youtube.com/shorts/m40501aopTc).**
+
 ![The Terminal Launcher window: the Open in choice at the top, then the list of terminals, each row with a drag handle, a tick box, its name and folder, a ⋮ menu and a ▶ button](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/window.png)
 
 ```
