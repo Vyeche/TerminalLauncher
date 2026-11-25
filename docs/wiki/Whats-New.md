@@ -11,6 +11,7 @@ launcher (see [Installing](Installing#updating)).
   ([Open in](Open-In-Modes)). Mark any of them to open by themselves when you log in
   ([Start at login](Start-At-Login)). It's the renamed Claude Launcher, and moves your list over by
   itself ([Files and settings](Files-and-Settings#coming-from-claude-launcher)).
+  A [40-second tour on YouTube](https://youtube.com/shorts/m40501aopTc) shows it in action.
 - **Drag to reorder:** with two or more rows, each row has a drag handle. Drag a row onto another
   one and it takes that row's place. A line in your accent colour shows where it will land, the list scrolls while you drag
   near its top or bottom edge, and your ticks and scroll position stay as they were. The new order is
