@@ -9,6 +9,7 @@ launcher (see [Installing](Installing#updating)).
   shell tip. Click it for the next one. See [Byte the cat and badges](Byte-the-Cat).
 - **Badges:** twelve little quests (your first star, 25 opens, an early-bird open, trying every
   **Open in** choice, a secret...). **🏅** next to the cat shows them.
+- A new [48-second tour on YouTube](https://youtube.com/shorts/3tdUWFhMW3Y), with sound.
 - Needs `python3-gi-cairo` to draw the cat ([Installing](Installing)); without it the cat stays hidden.
 
 ## 2026-11-25

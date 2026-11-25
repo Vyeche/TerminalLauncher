@@ -1730,7 +1730,7 @@ class Window(Adw.ApplicationWindow):
                 ticked = [entry if t is old else t for t in ticked]
             save_sessions(self.sessions)
             self._rebuild_keeping(ticked)
-            self._toast(f"Saved {entry['name']}")
+            self._say("nod", f"Saved {entry['name']}.")   # the cat says it (a toast would cover its line)
         EditDialog(self, None if i is None else self.sessions[i], on_save).present()
 
     def _move(self, i, d):

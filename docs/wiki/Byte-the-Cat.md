@@ -3,6 +3,8 @@
 Byte is a small ginger cat at the bottom of the launcher's window. You never have to feed it, play
 with it or look after it: it's just there, and it does little things.
 
+![Byte at the bottom of the window: it blinks, gets a click (winks and says the word of the day), then hops when a star earns "New badge: First star!"](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/cat.gif)
+
 ## What it does
 - **Moves on its own:** it blinks every few seconds, and now and then winks, swishes its tail, twitches
   an ear or looks around. From 11 at night to 6 in the morning it naps (*z z z*) between reactions.
@@ -23,6 +25,8 @@ doesn't show the weather.
 ## Badges
 Twelve little quests. Earning one plays a small sparkle and Byte cheers. **🏅 N/12** next to the
 cat, or **☰ → Badges…**, lists them: the ones you've found with the date, and a hint for the rest.
+
+![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/badges.png)
 
 | Badge | How |
 | --- | --- |

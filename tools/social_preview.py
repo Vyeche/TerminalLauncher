@@ -4,7 +4,7 @@ shared): the icon, the name, the tagline and a screenshot of the window with its
 
     python3 tools/social_preview.py SCREENSHOT.png [OUT.png]     default OUT: docs/images/social-preview.png
 
-SCREENSHOT is the 2x window still that `tools/capture_media.py WORK_DIR tour` leaves at
+SCREENSHOT is the 2x window still that `tools/capture_media.py WORK_DIR stills` leaves at
 WORK_DIR/window-2x.png (docs/images/window.png works too, a little softer).
 Upload the result under the repository's Settings → General → Social preview → Edit.
 Needs pycairo and librsvg's GObject bindings (gir1.2-rsvg-2.0). Font: Open Sans."""
@@ -35,10 +35,10 @@ FG = (0.97, 0.96, 0.99)
 MUTED = (0.74, 0.71, 0.80)
 
 
-def text(cr, x, y, s, size, colour, bold=False):
+def text(cr, x, y, s, size, color, bold=False):
     cr.select_font_face(FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD if bold else cairo.FONT_WEIGHT_NORMAL)
     cr.set_font_size(size)
-    cr.set_source_rgb(*colour)
+    cr.set_source_rgb(*color)
     cr.move_to(x, y)
     cr.show_text(s)
 
@@ -93,7 +93,7 @@ def main():
     text(cr, tx, 432, "Your terminals and coding agents,", 27, FG)
     text(cr, tx, 468, "one click away", 27, ORANGE, bold=True)
     text(cr, tx, 530, "Claude Code · omp · opencode · any shell", 20, MUTED)
-    text(cr, tx, 560, "kitty tabs or windows · start at login", 20, MUTED)
+    text(cr, tx, 560, "favorites · kitty tabs or windows · start at login", 20, MUTED)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     surface.write_to_png(OUT)

@@ -108,7 +108,8 @@ class Display:
         self.button(False)
 
     def drag(self, x1, y1, x2, y2, duration=1.2, hold=0.25, settle=0.4):
-        """Press at (x1, y1), move to (x2, y2) in many small steps, release: a real drag."""
+        """Press at (x1, y1), move to (x2, y2) in many small steps, release: a real drag.
+        Returns the time of the release (time.time()), when a drop happens."""
         self.move(x1, y1)
         time.sleep(0.15)
         self.button(True)
@@ -125,6 +126,7 @@ class Display:
             time.sleep(duration / steps)
         time.sleep(settle)
         self.button(False)
+        return time.time()
 
     # ---------- keyboard ----------
     def _code(self, name):

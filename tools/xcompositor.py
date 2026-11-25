@@ -3,7 +3,7 @@
 tooltips and the drag icon get their see-through corners instead of black boxes in recordings.
 Used by tools/capture_media.py; no window manager, no effects, no shadows of its own.
 
-    python3 tools/xcompositor.py :98 [#RRGGBB]     runs until killed; the colour is the background
+    python3 tools/xcompositor.py :98 [#RRGGBB]     runs until killed; the color is the background
 
 Every top-level window is redirected off screen (XComposite) and drawn onto the overlay window
 about 60 times a second with XRender, windows with an alpha channel blended "over" the ones below.
