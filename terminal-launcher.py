@@ -350,6 +350,8 @@ def move_when_focused(is_focused, what, wait=5.0):
     deadline = time.monotonic() + wait
     while (left := deadline - time.monotonic()) > 0:
         if is_focused(left):
+            if time.monotonic() > deadline:   # the answer came too late: leave the window be
+                break
             err = press_move_shortcut(direction, lambda: is_focused(1.0))
             log(f"move {what} to monitor {direction}: " + (err or "ok"))
             return

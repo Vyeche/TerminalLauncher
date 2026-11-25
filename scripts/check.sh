@@ -71,7 +71,9 @@ tl.press_move_shortcut = fake_press
 t0 = time.monotonic()                                   # a slow focus query can't stretch the wait
 tl.move_when_focused(lambda timeout: time.sleep(min(timeout, 3.0)) or False, "test", wait=1.0)
 assert time.monotonic() - t0 < 1.6 and not pressed, time.monotonic() - t0
-answers = iter([True, False])                           # focused at first, gone just before the press
+tl.move_when_focused(lambda timeout: time.sleep(timeout + 0.2) or True, "test", wait=0.5)
+assert not pressed, "moved on a focus answer that came after the deadline"
+answers = iter([True, False])                          # focused at first, gone just before the press
 tl.move_when_focused(lambda timeout: next(answers, False), "test", wait=1.0)
 assert not pressed, "pressed although focus moved away"
 tl.move_when_focused(lambda timeout: True, "test", wait=1.0)
