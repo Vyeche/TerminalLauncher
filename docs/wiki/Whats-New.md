@@ -3,6 +3,18 @@
 Changes you'd notice, newest first. To get them: `git pull` in your clone, then close and reopen the
 launcher (see [Installing](Installing#updating)).
 
+## 2026-11-25 (later)
+- **Byte the cat:** a little ginger cat at the bottom of the window blinks, winks, naps at night,
+  reacts to what you do, and says something now and then: the date, a word of the day, a joke, a
+  shell tip. Click it for the next one. See [Byte the cat and badges](Byte-the-Cat).
+- **Byte watches your kitty tabs:** in **My kitty window** mode it comments when a long build or
+  test finishes, a command fails or gets fixed, you mistype one, a `git push` works, or an agent is
+  done. Command names only, never their arguments. **☰** turns it off.
+- **Badges:** twelve little quests (your first star, 25 opens, an early-bird open, trying every
+  **Open in** choice, a secret...). **🏅** next to the cat shows them.
+- A new [48-second tour on YouTube](https://youtube.com/shorts/3tdUWFhMW3Y), with sound.
+- Needs `python3-gi-cairo` to draw the cat ([Installing](Installing)); without it the cat stays hidden.
+
 ## 2026-11-25
 - **Favorites:** **☆** on a row stars it, and it moves up into **★ Favorites** at the top. Drag a
   row into Favorites to star it, or out to unstar it. **Open favorites** in the **▾** menu

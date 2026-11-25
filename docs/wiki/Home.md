@@ -5,7 +5,7 @@ terminals you open every day and opens them with one click: coding-agent session
 omp, opencode), a plain shell in a project folder, or a command you run often. Mark any of them to
 **start when you log in**.
 
-**[Watch the 40-second tour on YouTube](https://youtube.com/shorts/m40501aopTc).**
+**[Watch the 48-second tour on YouTube](https://youtube.com/shorts/3tdUWFhMW3Y)** (sound on).
 
 ![The Terminal Launcher window: the Open in choice at the top, then the list of terminals, each row with a drag handle, a tick box, its name and folder, a ⋮ menu and a ▶ button](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/window.png)
 
@@ -24,6 +24,8 @@ omp, opencode), a plain shell in a project folder, or a command you run often. M
       ~/code/web  ·  Runs: npm run dev  ·  starts at login        opens by itself when you log in
  ⠿ ☐  old notes                               ☆  ⋮  ▶           (red: the folder is gone)
       Folder not found: ~/notes-2023
+
+ =^.^=  Word of the day: pipe, the | sign...      🏅 3/12        Byte the cat, and your badges
 ```
 
 ## Start here
@@ -32,6 +34,7 @@ omp, opencode), a plain shell in a project folder, or a command you run often. M
 - [Installing](Installing): what you need on each distro, `install.sh`, removing, moving the folder
 - [Entry types](Entry-Types): Claude Code, omp, opencode, a plain terminal or a command, and the exact command each one runs
 - [Open in](Open-In-Modes): your kitty window, one GNOME Terminal window, or separate COSMIC windows, and **Move to monitor**
+- [Byte the cat and badges](Byte-the-Cat): the little cat at the bottom, its jokes and words of the day, and twelve badges to find
 - [Start at login](Start-At-Login): what opens when you log in, and how to check it
 - [Command line](Command-Line): `--all`, `--all-windows`, `--autostart`, `--dry-run`, `--sounds`
 - [Files and settings](Files-and-Settings): `sessions.json`, `settings.json`, coming from Claude Launcher

@@ -79,6 +79,8 @@ rows. **⋮ → Move up / Move down** also moves a row one step.
 star turns gold with a little pop, and the row glows for a moment. **☆** again (or **⋮ → Remove from
 favorites**) puts it back at the top of **Terminals**.
 
+![Clicking ☆ on a row: the star pops, the row glows gold and moves up into ★ Favorites; then another row is dragged up into Favorites](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/favorites.gif)
+
 You can also drag a row into Favorites to star it, or drag a favorite down among the rest to
 unstar it. **Open favorites** in the **▾** menu next to the top button (**Ctrl+Shift+Enter**) opens
 all of them, the way **Open in** says.
