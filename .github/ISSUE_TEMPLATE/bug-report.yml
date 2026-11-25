@@ -22,7 +22,6 @@ body:
         - Start when I log in
         - install.sh
         - command line (--all, --all-windows, --autostart)
-        - docs
         - something else
     validations:
       required: true
