@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Every action in the Gauntlet is pinned to a commit SHA; Dependabot proposes each update as its
+  # own PR so the upstream changelog and any permission change can be reviewed before the SHA moves.
+  # The app itself has no package dependencies (Python standard library plus PyGObject from the OS).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(actions)"

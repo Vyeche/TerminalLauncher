@@ -1,0 +1,104 @@
+# Terminal Launcher Gauntlet: every pull request and every push to main runs `bash scripts/check.sh`
+# on a clean Ubuntu runner, so a change from anyone is tested the same way.
+#
+#   lint      actionlint over these workflows (expression, permission and typo mistakes)
+#   check     scripts/check.sh with GTK 4 and libadwaita from Ubuntu: syntax, dry-run launches in
+#             every Open-in mode, the login entry, no personal data, and the window on a hidden
+#             X display (Xvfb): drag-to-move, ticks, Move up/down, the Add dialog          (~1 min)
+#   required  one summary check that fails if any lane it lists failed: make this the only required
+#             status check on main (Settings → Rules), so new lanes don't need a settings change.
+#   guard     HOL Guard's repository scan, attestation and public verification. Only on pushes to
+#             main, weekly (a verification lasts 7 days) and by hand: it needs write permissions
+#             a fork's pull request never gets, so PRs rely on the checks above.
+#
+# Safety (pattern from HOL Guard): pull_request (never pull_request_target), so a PR's code runs
+# with a read-only token and no secrets; every action and download is pinned (commit SHA or
+# SHA-256); checkout keeps no credentials; every job has a timeout; a newer push to the same PR
+# cancels the old run; write permissions exist only in the guard job, which never runs PR code.
+name: Gauntlet
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"      # Mondays: keeps HOL Guard's 7-day verification fresh
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gauntlet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ACTIONLINT_VERSION: "1.7.12"
+  # SHA-256 of actionlint_1.7.12_linux_amd64.tar.gz (matches the release's checksums.txt)
+  ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: actionlint ${{ env.ACTIONLINT_VERSION }} (checksum-pinned)
+        run: |
+          url="https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" "$url"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: GTK 4, libadwaita, Xvfb and desktop-file-utils (Ubuntu's own packages)
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 \
+            install -y -qq --no-install-recommends python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            xvfb xauth desktop-file-utils
+      - name: check.sh (everything, with the window on a hidden display)
+        run: /usr/bin/python3 --version && PATH="/usr/bin:$PATH" bash scripts/check.sh
+
+  required:
+    if: always()
+    needs: [lint, check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Every lane passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "lane results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || { echo "::error::a Gauntlet lane did not pass ($r)"; exit 1; }; done
+
+  guard:
+    # Never on pull requests: the scan attests and uploads SARIF, which needs write permissions
+    # a fork's PR doesn't get. Registration on hol.org only works through this reusable workflow.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+    uses: hashgraph-online/hol-guard/.github/workflows/guarded-repository.yml@f590c7d61400ff6553cf0bcc03a72e9694f69048
+    with:
+      profile: strict-security
+      fail_on_severity: critical
+      upload_sarif: true
+      visibility: public

@@ -24,7 +24,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 APP_ID = "net.vyechi.TerminalLauncher"
 APP_NAME = "Terminal Launcher"
@@ -522,6 +522,9 @@ class Window(Adw.ApplicationWindow):
         self.mode = load_mode()
         self.checked = set()
         self.play_btns = []
+        self._drag_from = None   # index of the row being dragged
+        self._scroll_tick = 0    # timer that scrolls the list while a drag is near its top or bottom
+        self._scroll_speed = 0
         self.toasts = Adw.ToastOverlay()
 
         # Window actions (menus and buttons use these)
@@ -568,6 +571,10 @@ class Window(Adw.ApplicationWindow):
         how.add(self.mode_row)
         self.page.add(how)
         self.group = None
+        edge = Gtk.DropControllerMotion()   # dragging a row near the top or bottom scrolls the list
+        edge.connect("motion", self._edge_motion)
+        edge.connect("leave", lambda *_: self._edge_scroll(0))
+        self.page.add_controller(edge)
 
         self.empty = Adw.StatusPage(icon_name="utilities-terminal-symbolic", title="No terminals yet",
                                     description="Add an agent session (Claude Code, omp, opencode), a folder to open a shell in, "
@@ -591,6 +598,14 @@ class Window(Adw.ApplicationWindow):
             keys.add_shortcut(Gtk.Shortcut(trigger=Gtk.ShortcutTrigger.parse_string(trig),
                                            action=Gtk.CallbackAction.new(cb)))
         self.add_controller(keys)
+
+        css = Gtk.CssProvider()   # a line where a dragged row will land
+        rules = ("row.drop-above { box-shadow: inset 0 2px @accent_color; }"
+                 "row.drop-below { box-shadow: inset 0 -2px @accent_color; }"
+                 "row.dragging { opacity: 0.4; }")
+        css.load_from_string(rules)
+        Gtk.StyleContext.add_provider_for_display(self.get_display(), css,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self._rebuild()
 
     def _toast(self, msg):
@@ -625,11 +640,18 @@ class Window(Adw.ApplicationWindow):
                                    tooltip_text="Include in the button at the top (click the row to tick)")
             tick.connect("toggled", lambda b, i=i: self._tick(i, b.get_active()))
             self.ticks.append(tick)
-            icon = Gtk.Image(icon_name=KIND_ICONS.get(kind, "utilities-terminal-symbolic"),
+            # chat-symbolic is in the Pop and COSMIC themes; plain Adwaita has chat-message-new-symbolic
+            names = [KIND_ICONS.get(kind, "utilities-terminal-symbolic"), "chat-message-new-symbolic",
+                     "utilities-terminal-symbolic"]
+            icon = Gtk.Image(gicon=Gio.ThemedIcon.new_from_names(names),
                              tooltip_text=dict(KINDS).get(kind), css_classes=["dim-label"])
             row.add_prefix(icon)
             row.add_prefix(tick)
             row.set_activatable_widget(tick)  # clicking the row ticks it; ▶ is the only launch
+            if n > 1:
+                row.add_prefix(Gtk.Image(icon_name="list-drag-handle-symbolic", css_classes=["dim-label"],
+                                         tooltip_text="Drag to move this row up or down the list"))
+                self._add_drag(row, i)
 
             menu = Gio.Menu()
             menu.append("Edit…", f"win.edit({i})")
@@ -644,7 +666,7 @@ class Window(Adw.ApplicationWindow):
             danger.append("Remove from list…", f"win.remove({i})")
             menu.append_section(None, danger)
             more = Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=menu, valign=Gtk.Align.CENTER,
-                                  css_classes=["flat"], tooltip_text="Edit, reorder or remove")
+                                  css_classes=["flat"], tooltip_text="Edit, move or remove (or drag the row to move it)")
             row.add_suffix(more)
 
             play = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER,
@@ -658,6 +680,107 @@ class Window(Adw.ApplicationWindow):
         self.stack.set_visible_child_name("list" if n else "empty")
         self.open_btn.set_sensitive(bool(n))
         self._update_open_label()
+
+    def _add_drag(self, row, i):
+        """Let a row be dragged onto another row to move it there."""
+        src = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
+
+        def prepare(_src, x, y):
+            self._drag_from = i
+            self._drag_hot = (x, y)
+            return Gdk.ContentProvider.new_for_value(GObject.Value(GObject.TYPE_INT, i))
+
+        def begin(_src, drag):
+            snap = Gtk.WidgetPaintable(widget=row).get_current_image()
+            row.add_css_class("dragging")
+            icon = Gtk.DragIcon.get_for_drag(drag)
+            pic = Gtk.Picture(paintable=snap, can_shrink=False, css_classes=["card"])
+            pic.set_size_request(row.get_width(), row.get_height())
+            icon.set_child(pic)
+            drag.set_hotspot(int(self._drag_hot[0]), int(self._drag_hot[1]))
+
+        def end(_src, _drag, _deleted):
+            row.remove_css_class("dragging")
+            self._drag_from = None
+            self._edge_scroll(0)
+
+        src.connect("prepare", prepare)
+        src.connect("drag-begin", begin)
+        src.connect("drag-end", end)
+        row.add_controller(src)
+
+        dst = Gtk.DropTarget.new(GObject.TYPE_INT, Gdk.DragAction.MOVE)
+
+        def motion(_dst, _x, _y):
+            frm = self._drag_from
+            row.remove_css_class("drop-above")
+            row.remove_css_class("drop-below")
+            if frm is None or frm == i:
+                return 0
+            row.add_css_class("drop-below" if frm < i else "drop-above")
+            return Gdk.DragAction.MOVE
+
+        def leave(_dst):
+            row.remove_css_class("drop-above")
+            row.remove_css_class("drop-below")
+
+        def drop(_dst, value, _x, _y):
+            leave(None)
+            frm = self._drag_from
+            if frm is None or value != frm or frm == i:
+                return False
+            GLib.idle_add(self._move_to, frm, i)   # rebuild after the drag has finished
+            return True
+
+        dst.connect("enter", motion)
+        dst.connect("motion", motion)
+        dst.connect("leave", leave)
+        dst.connect("drop", drop)
+        row.add_controller(dst)
+
+    def _move_to(self, i, j):
+        """Move entry i to position j (dragged rows land where they were dropped).
+        Ticks and the scroll position stay as they were."""
+        if not (0 <= i < len(self.sessions) and 0 <= j < len(self.sessions) and i != j):
+            return False
+        ticked = [self.sessions[k] for k in self.checked]
+        adj = self._vadjustment()
+        top = adj.get_value() if adj else None
+        self.sessions.insert(j, self.sessions.pop(i))
+        save_sessions(self.sessions)
+        self._rebuild()
+        for k, s in enumerate(self.sessions):
+            if any(s is t for t in ticked):
+                self.ticks[k].set_active(True)
+        if adj:
+            GLib.idle_add(lambda: adj.set_value(top) and False)
+        return False
+
+    def _vadjustment(self):
+        """The vertical scroll position of the list (Adw.PreferencesPage keeps its ScrolledWindow inside)."""
+        w = self.page.get_first_child()
+        while w and not isinstance(w, Gtk.ScrolledWindow):
+            w = w.get_first_child()
+        return w.get_vadjustment() if w else None
+
+    def _edge_motion(self, ctl, _x, y):
+        if self._drag_from is None:
+            return
+        h, zone = self.page.get_height(), 48
+        self._edge_scroll(-(zone - y) if y < zone else (y - (h - zone)) if y > h - zone else 0)
+
+    def _edge_scroll(self, speed):
+        """Scroll by `speed` (pixels per step, sign = direction) until told 0."""
+        self._scroll_speed = speed / 3
+        if speed and not self._scroll_tick:
+            def step():
+                adj = self._vadjustment()
+                if not self._scroll_speed or not adj:
+                    self._scroll_tick = 0
+                    return False
+                adj.set_value(adj.get_value() + self._scroll_speed)
+                return True
+            self._scroll_tick = GLib.timeout_add(16, step)
 
     def _tick(self, i, on):
         (self.checked.add if on else self.checked.discard)(i)

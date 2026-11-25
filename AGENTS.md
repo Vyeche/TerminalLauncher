@@ -13,9 +13,16 @@ any Linux desktop with GTK 4 and libadwaita 1.4+. See `README.md` for the user-f
 | --- | --- |
 | `terminal-launcher.py` | the whole app: storage, launching, start at login, UI, command line |
 | `install.sh` | per-user app-menu entry (`remove` to undo); replaces the old Claude Launcher entry |
+| `scripts/check.sh` | every check (`--quick` skips the window test); the Gauntlet runs it |
 | `scripts/sync-public.sh` | copies the committed files to the public GitHub clone (see Git) |
+| `scripts/publish-wiki.sh` | pushes `docs/wiki/` to the GitHub wiki |
 | `assets/terminal-launcher.svg` | icon |
 | `README.md` | user docs; keep it in step with any change users can see |
+| `docs/wiki/` | the GitHub wiki's pages (a line in `Whats-New.md` for user-visible changes) |
+| `docs/images/` | README screenshots and GIFs, made from a made-up list (`tools/`) |
+| `.github/` | the Gauntlet (CI), Dependabot, issue forms, PR template, funding, code owners |
+| `.coderabbit.yaml` | CodeRabbit's review settings for pull requests on GitHub |
+| `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `LICENSE` (MIT) | community files |
 
 User data (never in the repo): `~/.config/terminal-launcher/` (`sessions.json`, `settings.json`),
 the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and the log
@@ -48,7 +55,9 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
 - Scripts start with a short comment saying what they do and how to run them.
 
 ## Testing
-Use a throwaway config folder so nothing touches the real list or opens real sessions:
+`bash scripts/check.sh` runs everything the Gauntlet runs (throwaway HOME, stub terminals, the window
+on a hidden Xvfb display); add a check there with every fix. For trying things by hand, use a
+throwaway config folder so nothing touches the real list or opens real sessions:
 ```bash
 T=$(mktemp -d)   # or a scratch folder of your session
 export XDG_CONFIG_HOME=$T/cfg XDG_CACHE_HOME=$T/cache

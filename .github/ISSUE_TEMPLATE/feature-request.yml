@@ -1,0 +1,29 @@
+name: Idea or feature request
+description: Something Terminal Launcher could do better or do next.
+title: "[idea] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terminal Launcher aims to stay small: one window, one click to get your terminals and agent
+        sessions back, nothing that gets in the way.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution, e.g. "I open the same four repos every morning in Alacritty".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: Fit
+      options:
+        - label: It works per user, without sudo or system files
+        - label: It wouldn't add a dependency beyond Python, GTK 4 and libadwaita

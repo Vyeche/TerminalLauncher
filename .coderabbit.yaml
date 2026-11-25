@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit reviews every pull request to main on GitHub (Vyeche/TerminalLauncher), next to the
+# Gauntlet. The project's rules live in AGENTS.md; the path notes below point at the parts that are
+# easy to get wrong.
+language: en-US
+tone_instructions: "Plain, friendly and short. Point at the line and say what breaks, then the fix."
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  path_filters:
+    - "!docs/images/**"
+    - "!**/*.gif"
+    - "!**/*.png"
+  path_instructions:
+    - path: "terminal-launcher.py"
+      instructions: >-
+        One-file GTK 4 / libadwaita app; Python standard library plus PyGObject only, no other
+        dependencies. Saving the list must keep the autostart file in step (save_sessions →
+        sync_autostart): present while some entry is marked, removed when none is. Start at login stays
+        off unless the user turns it on, and it means XDG autostart at login, never at power-on. Keep the
+        kitty socket name unix:@claude-launcher-kitty and the migration from ~/.config/claude-launcher/.
+        Commands built for terminals must quote folders and commands safely (spaces, quotes, $,
+        newlines): check shlex use and that nothing user-provided reaches a shell unquoted. --dry-run
+        must never start anything. Every new control needs a tooltip; UI text is plain and short.
+        New agent types go in KINDS and AGENTS; the recent-sessions picker reads only Claude Code's history.
+    - path: "install.sh"
+      instructions: >-
+        Per user only: no sudo, nothing outside ~/.config, ~/.cache and ~/.local/share/applications.
+        It may remove only its own entries (and the old Claude Launcher one).
+    - path: "scripts/check.sh"
+      instructions: >-
+        Must never touch the real list, terminals or kitty window: throwaway HOME/XDG dirs, stub
+        terminals first on PATH, the window only on a hidden display.
+    - path: ".github/workflows/**"
+      instructions: >-
+        The Gauntlet runs untrusted pull request code: pull_request only (never pull_request_target),
+        read-only permissions for any job that runs PR code, every action pinned to a full commit SHA
+        and every download to a SHA-256, persist-credentials: false.
+    - path: "docs/**"
+      instructions: >-
+        User docs: plain, friendly, short words. Keep them in step with behaviour (README and the
+        wiki), with a line in docs/wiki/Whats-New.md for user-visible changes. No personal data:
+        made-up names and paths only.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "CONTRIBUTING.md"
+chat:
+  auto_reply: true

@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Terminal Launcher doesn't work the way the README says.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! [Troubleshooting](../wiki/Troubleshooting) covers the common problems.
+        Please leave out anything private: real session IDs, folder names you'd rather not share.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - the list (rows, ticking, ▶, drag to reorder)
+        - Add / Edit (types, recent Claude sessions, folder picker)
+        - Open in: my kitty window
+        - Open in: one new window (GNOME Terminal)
+        - Open in: separate windows (COSMIC Terminal)
+        - Start when I log in
+        - install.sh
+        - command line (--all, --all-windows, --autostart)
+        - docs
+        - something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you clicked or ran, in order.
+    validations:
+      required: true
+  - type: textarea
+    id: dryrun
+    attributes:
+      label: Output of `python3 terminal-launcher.py --autostart --dry-run`
+      description: Prints the commands it would run, without opening anything (only for entries marked to start at login). Remove anything private.
+      render: text
+  - type: input
+    id: desktop
+    attributes:
+      label: OS, desktop and terminal
+      placeholder: "Pop!_OS 24.04, COSMIC (Wayland), kitty 0.51"
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: For start-at-login problems, the last lines of ~/.cache/terminal-launcher/launcher.log.
+      render: text
