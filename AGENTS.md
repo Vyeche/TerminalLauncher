@@ -45,6 +45,16 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
   autostart), not at power-on; say so wherever it's described.
 - Saving the list must keep the autostart file in step (`save_sessions` → `sync_autostart`): present
   while some entry is marked, removed when none is.
+- **American English** everywhere: UI text, docs, wiki, code comments ("Favorites", "color").
+- **Move to monitor presses real keys.** It writes to `/dev/uinput`, which reaches the real desktop
+  even from a hidden Xvfb display. Tests and media runs keep `move_to_monitor` unset (or use
+  `--dry-run`, which only prints `would press …`).
+- **Favorites stay first** in `sessions.json` and on screen (`favorites_first`). Starring moves an
+  entry to the end of Favorites; dropping a row on a favorite stars it, among the rest unstars it.
+- **Sounds, animations and tips stay subtle.** Sounds are made in code (`SOUNDS`, peak `SOUND_PEAK`),
+  short and quiet, never with `--dry-run`, and off with ☰ → Sounds or the desktop's event-sounds
+  switch. Animations are CSS in `APP_CSS` and skipped when the desktop turns animations off. A tip
+  shows once (`tips_seen`), at the moment it's useful, and fits on one line.
 - New agent types go in `KINDS` and `AGENTS` (label, new-session command, resume command). The
   "recent sessions" picker reads only Claude Code's history; don't guess at other agents' stores.
 

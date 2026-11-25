@@ -17,6 +17,7 @@ The three switches open terminals and exit without showing the window.
 | `--all-windows` | every entry, each in its own window: COSMIC Terminal, else GNOME Terminal, else `x-terminal-emulator` | no |
 | `--autostart` | only the entries marked **Start when I log in**, after a 5 second wait, and logs the result | yes |
 | `--dry-run` | nothing: prints a `would start: …` line for each terminal instead | |
+| `--sounds` | nothing: plays each of the launcher's little sounds once (with `--dry-run`, only makes the files) | |
 
 `--all` and `--all-windows` never use kitty, whatever **Open in** says. `--autostart` does: in kitty
 mode it adds tabs to the launcher's kitty window. If you give more than one, `--autostart` wins over

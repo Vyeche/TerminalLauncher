@@ -39,10 +39,48 @@ Code's own history (`~/.claude/projects`).
 - **Separate windows**: each in its own COSMIC Terminal window (falls back to GNOME Terminal, then
   `x-terminal-emulator`).
 
+### Move to monitor (COSMIC, more than one screen)
+On Wayland an app can't choose its monitor: COSMIC opens new windows on the monitor it considers
+active, which may not be the one you're looking at (or the one you share over remote desktop). Set
+**Move to monitor** to *Monitor below / above / to the left / to the right* and the launcher moves
+the windows it opens there:
+
+- a **new kitty window** (in **My kitty window** mode; tabs added to an open window stay where it is),
+- the **launcher's own window** when it starts.
+
+It presses COSMIC's own *Move window to monitor* shortcut (**Super+Shift+Alt+arrow**) on a
+short-lived virtual keyboard (`/dev/uinput`, which the logged-in user may use; nothing to install).
+It presses it only while the window it just opened has focus, so it never moves another window; if
+that window doesn't get focus within 5 seconds, it's left where it is. On the far monitor already?
+COSMIC then does nothing. Results go to the log. Off by default. It won't work if you've changed that
+shortcut in COSMIC's settings, and GNOME Terminal / COSMIC Terminal windows (the other **Open in**
+choices) aren't moved.
+
 **▶** on a row opens that one now. Tick a few rows and use the button at the top to open them together
 (nothing ticked = all). **Folder…** opens a shell anywhere without adding it to the list.
 Drag a row by its handle (or anywhere on it) to change the order; **⋮** also has Move up / Move down.
-Shortcuts: `Ctrl+N` add, `Ctrl+O` folder, `Ctrl+Enter` open.
+Shortcuts: `Ctrl+N` add, `Ctrl+O` folder, `Ctrl+Enter` open, `Ctrl+Shift+Enter` open favorites.
+
+### Favorites
+**☆** on a row makes it a favorite: it moves up into **★ Favorites** at the top of the window
+(**⋮** has *Add to favorites* too). Dragging a row into Favorites stars it, and dragging it back
+down unstars it. **Open favorites** in the **▾** menu next to the top button (`Ctrl+Shift+Enter`)
+opens all of them the way **Open in** says.
+
+### Sounds, animations and tips
+Small things that make it nicer to use and teach it as you go, all quiet and easy to turn off:
+- **Sounds**: a soft two-note chime for a star (and a lower one when you take it away), a light
+  pluck when something opens, a tock when a dragged row lands. They're made by the launcher itself
+  (no sound files, nothing to install) and play with `pw-play`, `paplay` or `aplay`. Hear them all:
+  `python3 terminal-launcher.py --sounds`.
+- **Animations**: a new favorite's star pops and its row glows gold for a moment; ▶ gives a little
+  press. They follow your desktop's animation setting.
+- **Tips**: one short tip at the moment it's useful, each shown once: your first favorite, the first
+  time you tick two rows, the first drag into Favorites, and, the third time you open the same
+  terminal with ▶, a nudge to star it (with a **Star it** button).
+
+**☰** at the top right turns **Sounds** and **Tips** on or off, and **Show tips again** brings the
+tips back. Sounds also stay off when your desktop's own event sounds are off.
 
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)
 
@@ -91,6 +129,7 @@ python3 terminal-launcher.py                # the window
 python3 terminal-launcher.py --all          # every saved entry as tabs in one GNOME Terminal window
 python3 terminal-launcher.py --all-windows  # every saved entry in its own window
 python3 terminal-launcher.py --autostart    # the entries marked "Start when I log in"
+python3 terminal-launcher.py --sounds       # plays each of the launcher's little sounds once
 ```
 Add `--dry-run` to `--autostart` to print the commands instead of running them.
 
@@ -104,8 +143,9 @@ Add `--dry-run` to `--autostart` to print the commands instead of running them.
 | `docs/images/`, `tools/` | the screenshots and GIFs, and the scripts that make them from a made-up list |
 | `scripts/sync-public.sh`, `scripts/publish-wiki.sh` | for maintainers: publish to GitHub and its wiki |
 | `docs/wiki/` | the [wiki](https://github.com/Vyeche/TerminalLauncher/wiki)'s pages |
-| `~/.config/terminal-launcher/sessions.json` | your list |
-| `~/.config/terminal-launcher/settings.json` | the **Open in** choice |
+| `~/.config/terminal-launcher/sessions.json` | your list (with each entry's star and how often you opened it) |
+| `~/.config/terminal-launcher/settings.json` | the **Open in** and **Move to monitor** choices, Sounds, Tips and the tips already shown |
+| `~/.cache/terminal-launcher/sounds/` | the little sounds, made on first use |
 
 ## Coming from Claude Launcher
 This is the renamed **Claude Launcher**. On first start it copies your list and settings from

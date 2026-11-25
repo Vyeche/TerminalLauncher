@@ -64,3 +64,29 @@ Each entry gets **its own window**, in the first terminal of these that is insta
 | your system's default | `x-terminal-emulator -e bash -lc 'cd <folder> && <command>'` |
 
 `<command>` is what the entry runs: see [Entry types](Entry-Types#exactly-what-runs).
+
+## Move to monitor (COSMIC, more than one screen)
+On Wayland an app can't choose which monitor its windows open on. COSMIC puts a new window on the
+monitor it considers active, which may not be the one you're looking at (or the one you share over
+remote desktop). **Move to monitor**, under **Open in**, fixes that:
+
+| Choice | What happens |
+| --- | --- |
+| Leave where the desktop puts them | nothing (the default) |
+| Monitor below / above / to the left / to the right | the window is moved one monitor that way |
+
+It moves:
+- a **new kitty window** the launcher starts in **My kitty window** mode (tabs added to a kitty
+  window that's already open stay where it is), and
+- the **launcher's own window** when it starts.
+
+How: the launcher presses COSMIC's own *Move window to monitor* shortcut, **Super+Shift+Alt+arrow**,
+on a short-lived virtual keyboard (`/dev/uinput`, which the logged-in user may use; nothing to
+install). It presses it **only while the window it just opened has focus**, so it can't move one of
+your other windows. If that window doesn't get focus within 5 seconds, it's left where it is.
+Already on the far monitor? COSMIC then does nothing. Each move is written to the log
+(`~/.cache/terminal-launcher/launcher.log`), and `--dry-run` prints `would press Super+Shift+Alt+…`
+instead of pressing anything.
+
+It won't work if you changed that shortcut in COSMIC's settings, and it doesn't move GNOME Terminal
+or COSMIC Terminal windows (the other **Open in** choices).

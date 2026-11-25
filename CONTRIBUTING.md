@@ -48,5 +48,5 @@ Gauntlet's pinned GitHub Actions up to date, one pull request per update.
 ## Style
 - Plain, friendly, short words in everything people read. Buttons say what happens ("Add 3 to kitty").
 - Every control has a tooltip. Follow the libadwaita patterns already used.
-- Keep README and the wiki (`docs/wiki/`, with a line in `Whats-New.md`) in step with behaviour.
+- Keep README and the wiki (`docs/wiki/`, with a line in `Whats-New.md`) in step with behavior.
 - No personal data in code, docs, tests or screenshots: made-up names and paths only.

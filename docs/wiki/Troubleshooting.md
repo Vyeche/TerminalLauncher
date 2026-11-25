@@ -11,7 +11,7 @@ To see what it would open, without opening anything:
 GTK 4 or libadwaita is missing. An error that names `ToolbarView` instead means libadwaita is older
 than 1.4. See [Installing](Installing#what-you-need) for the packages and a one-line version check.
 
-### A row is red and its ▶ is greyed out
+### A row is red and its ▶ is grayed out
 Its folder doesn't exist (any more). The second line says *Folder not found: …*. Use
 **⋮ → Edit…** to point it at the right folder, or create the folder.
 
@@ -83,6 +83,24 @@ file. See [Files and settings](Files-and-Settings#editing-it-by-hand).
 - Drop it **on another row**: it takes that row's place. Dropped anywhere else (below the list, on the
   **Open in** row), it stays where it was.
 - **⋮ → Move up / Move down** move a row one step, too.
+
+### Windows open on the wrong monitor
+Set **Move to monitor** under **Open in** ([how it works](Open-In-Modes#move-to-monitor-cosmic-more-than-one-screen)).
+If it's set and nothing moves:
+- It only moves a **new** kitty window and the launcher itself, not tabs added to an open kitty
+  window, and not GNOME Terminal or COSMIC Terminal windows.
+- Look in `~/.cache/terminal-launcher/launcher.log`: `skipped, it never had focus` means the window
+  didn't get focus within 5 seconds; `can't use /dev/uinput` means your user may not use the virtual
+  keyboard device.
+- COSMIC's *Move window to monitor* shortcut must still be **Super+Shift+Alt+arrow**.
+
+### No sounds
+- **☰ → Sounds** is off, or your desktop has event sounds turned off (GTK's
+  `gtk-enable-event-sounds`; on GNOME the `org.gnome.desktop.sound event-sounds` setting). The
+  launcher follows both.
+- It plays with `pw-play`, `paplay` or `aplay`, whichever is installed; with none of them it stays
+  quiet. `python3 terminal-launcher.py --sounds` plays each sound once to check.
+- `--dry-run` never plays a sound.
 
 ### The app-menu entry doesn't start anything
 The cloned folder was moved or deleted. Run `bash install.sh` again from where it is now.
