@@ -57,6 +57,28 @@ check "--all --dry-run exits 0" python3 "$APP" --all --dry-run
 out="$(printf '{"open_mode": "kitty", "move_to_monitor": "down"}' > "$CFG/settings.json"; python3 "$APP" --autostart --dry-run 2>&1)"
 grep -q "would press Super+Shift+Alt+Down" <<< "$out" && ok "Move to monitor: a new kitty window is moved (dry-run)" \
   || { bad "Move to monitor didn't press the shortcut"; printf '%s\n' "$out" | sed 's/^/        /'; }
+python3 - "$APP" <<'EOF' && ok "Move to monitor: a real 5 s deadline, and no press once focus is gone" || bad "Move to monitor timing"
+# The real press_move_shortcut is replaced: nothing here touches /dev/uinput.
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location("tl", sys.argv[1]); tl = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tl)
+pressed = []
+def fake_press(direction, still_focused=lambda: True):
+    if not still_focused():
+        return "skipped, it lost focus before the shortcut"
+    pressed.append(direction)
+tl.press_move_shortcut = fake_press
+t0 = time.monotonic()                                   # a slow focus query can't stretch the wait
+tl.move_when_focused(lambda timeout: time.sleep(min(timeout, 3.0)) or False, "test", wait=1.0)
+assert time.monotonic() - t0 < 1.6 and not pressed, time.monotonic() - t0
+answers = iter([True, False])                           # focused at first, gone just before the press
+tl.move_when_focused(lambda timeout: next(answers, False), "test", wait=1.0)
+assert not pressed, "pressed although focus moved away"
+tl.move_when_focused(lambda timeout: True, "test", wait=1.0)
+assert pressed == ["down"], pressed
+log = tl.LOG.read_text()
+assert "skipped, it never had focus" in log and "lost focus" in log, log
+EOF
 echo '{"open_mode": "kitty"}' > "$CFG/settings.json"
 check "--all-windows --dry-run exits 0" python3 "$APP" --all-windows --dry-run
 [ "$(python3 "$APP" --sounds --dry-run | grep -c '\.wav$')" -ge 5 ] && [ ! -s "$T/played.log" ] \

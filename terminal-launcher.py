@@ -294,8 +294,10 @@ def load_monitor():
     return m if m in dict(MONITOR_ROWS) else ""
 
 
-def press_move_shortcut(direction):
-    """Press Super+Shift+Alt+<direction> on a temporary virtual keyboard. Returns an error or None."""
+def press_move_shortcut(direction, still_focused=lambda: True):
+    """Press Super+Shift+Alt+<direction> on a temporary virtual keyboard. Returns an error or None.
+    `still_focused` is asked again after the keyboard's setup wait, just before the first key: if the
+    window lost focus meanwhile, nothing is pressed (so another window is never moved)."""
     import fcntl
     import struct
     if DRY_RUN:
@@ -313,6 +315,9 @@ def press_move_shortcut(direction):
         os.write(fd, struct.pack("80sHHHHi256i", name, 0x06, 0x1, 0x1, 1, 0, *([0] * 256)))
         fcntl.ioctl(fd, 0x5501)                              # UI_DEV_CREATE
         time.sleep(0.6)                                      # let the desktop pick up the new keyboard
+        if not still_focused():
+            fcntl.ioctl(fd, 0x5502)                          # UI_DEV_DESTROY
+            return "skipped, it lost focus before the shortcut"
 
         def ev(code, value):
             os.write(fd, struct.pack("qqHHi", 0, 0, 1, code, value))
@@ -333,26 +338,29 @@ def press_move_shortcut(direction):
         os.close(fd)
 
 
-def move_when_focused(is_focused, what):
-    """Wait up to 5 s for the window we opened to have focus, then move it. Logs the outcome."""
+def move_when_focused(is_focused, what, wait=5.0):
+    """Wait up to `wait` seconds (a real deadline) for the window we opened to have focus, then move it.
+    is_focused(timeout) answers within `timeout` seconds. Logs the outcome."""
     direction = load_monitor()
     if not direction:
         return
     if DRY_RUN:
         press_move_shortcut(direction)
         return
-    for _ in range(25):
-        if is_focused():
-            err = press_move_shortcut(direction)
+    deadline = time.monotonic() + wait
+    while (left := deadline - time.monotonic()) > 0:
+        if is_focused(left):
+            err = press_move_shortcut(direction, lambda: is_focused(1.0))
             log(f"move {what} to monitor {direction}: " + (err or "ok"))
             return
-        time.sleep(0.2)
+        time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
     log(f"move {what} to monitor {direction}: skipped, it never had focus")
 
 
-def _kitty_focused():
+def _kitty_focused(timeout=3.0):
     try:
-        r = subprocess.run([KITTY, "@", "--to", KITTY_SOCK, "ls"], capture_output=True, timeout=3)
+        r = subprocess.run([KITTY, "@", "--to", KITTY_SOCK, "ls"], capture_output=True,
+                           timeout=max(0.1, min(3.0, timeout)))
         return any(w.get("is_focused") for w in json.loads(r.stdout or b"[]"))
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
@@ -1304,14 +1312,19 @@ class App(Adw.Application):
         win = self.get_active_window()
         if win is None:
             win = Window(self)
-            if load_monitor():   # move the launcher's own window once, after it first gets focus
-                def first_focus(w, _pspec):
-                    if w.is_active():
-                        w.disconnect(handler)
-                        # it has focus now, so the shortcut can only reach this window
-                        threading.Thread(target=move_when_focused, args=(lambda: True, "launcher window"),
-                                         daemon=True).start()
-                handler = win.connect("notify::is-active", first_focus)
+            if load_monitor():   # move the launcher's own window once, if it gets focus within 5 s
+                # GTK keeps this flag current on the main thread; the move's worker thread only reads
+                # it (it never calls GTK), and checks it again just before pressing the shortcut
+                state = {"active": False, "started": False, "until": time.monotonic() + 5.0}
+
+                def focus_changed(w, _pspec):
+                    state["active"] = w.is_active()
+                    if state["active"] and not state["started"] and time.monotonic() < state["until"]:
+                        state["started"] = True
+                        threading.Thread(target=move_when_focused, daemon=True,
+                                         args=(lambda _t=None: state["active"], "launcher window",
+                                               max(0.1, state["until"] - time.monotonic()))).start()
+                win.connect("notify::is-active", focus_changed)
         win.present()
 
 
