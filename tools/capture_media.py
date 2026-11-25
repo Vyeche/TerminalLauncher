@@ -41,7 +41,8 @@ Nothing here touches your screen, your list or your terminals:
 - "Move to monitor" (which presses keys on a /dev/uinput virtual keyboard, and that would reach the
   real desktop) stays off: settings.json never has it, tools/app_probe.py replaces the key press
   with a stub, and every scene ends by checking that the setting is still unset.
-Needs Xvfb, ffmpeg, dbus-run-session, python3-gi (GTK 4, libadwaita) and pycairo (for probe)."""
+Needs Xvfb, ffmpeg, dbus-run-session, python3-gi (GTK 4, libadwaita), python3-gi-cairo (GTK's cairo
+bridge, which draws Byte the cat) and pycairo (for probe)."""
 import json
 import os
 import re
@@ -258,11 +259,16 @@ class Rig:
             sys.exit(f"capture_media.py: STOP: the app tried a Move to monitor key press (blocked; see {plog})")
 
     def close(self):
-        self.stop()
-        self.X.close()
-        for p in (self.comp, self.xvfb):
-            p.terminate()
-            p.wait()
+        """Stop the app, then always release the display, even when a safety check stops the run."""
+        try:
+            self.stop()
+        finally:
+            try:
+                self.X.close()
+            finally:
+                for p in (self.comp, self.xvfb):
+                    p.terminate()
+                    p.wait()
 
     def wait_window(self, name, timeout=15, exclude=()):
         end = time.time() + timeout

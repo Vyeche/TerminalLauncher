@@ -1730,6 +1730,8 @@ class Window(Adw.ApplicationWindow):
         self._sound("star" if moved.get("star") else "unstar")
         if moved.get("star"):
             awarded = self._award("first-star") or awarded
+            if sum(1 for s in self.sessions if s.get("star")) >= 5:
+                awarded = self._award("collector") or awarded
         name = moved.get("name") or short_path(moved["folder"])
         if not awarded and not self._tip("drag-star", "drag a row into Favorites to star it, or out to unstar it."):
             self._say("hop" if moved.get("star") else "ear", f"★ {name} is a favorite now!" if moved.get("star")

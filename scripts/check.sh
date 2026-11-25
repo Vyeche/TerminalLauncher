@@ -174,7 +174,8 @@ echo "Window (hidden display)"
 if [ $QUICK -eq 1 ]; then skip "window test (--quick)"
 elif ! command -v xvfb-run >/dev/null; then skip "window test (xvfb-run not installed)"
 else
-  if xvfb-run -a env GDK_BACKEND=x11 python3 - "$APP" > "$T/ui.log" 2>&1 <<'EOF'
+  # LC_ALL=C.UTF-8: the date lines are checked in English whatever the machine's language is
+  if xvfb-run -a env GDK_BACKEND=x11 LC_ALL=C.UTF-8 LANG=C.UTF-8 python3 - "$APP" > "$T/ui.log" 2>&1 <<'EOF'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("tl", sys.argv[1]); tl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tl)
@@ -343,6 +344,17 @@ def act(app):
         assert w._watch_prev is None and w._watch_skip == 4, "no back-off when kitty isn't there"
         w.lookup_action("watch").change_state(GLib.Variant("b", False))
         assert tl.load_settings()["watch"] is False and w._watch_tick() is True and not w._watch_busy
+
+        # Collector: the fifth favorite counts when it's dragged in, too
+        assert "collector" not in w._badges()
+        while len(w.sessions) < 6:
+            w.sessions.append({"name": f"extra {len(w.sessions)}", "folder": w.sessions[0]["folder"], "kind": "terminal"})
+        w._rebuild()
+        for s in [s for s in w.sessions if not s.get("star")][:4 - sum(1 for s in w.sessions if s.get("star"))]:
+            w._set_star(s)
+        assert sum(1 for s in w.sessions if s.get("star")) == 4, [s.get("star") for s in w.sessions]
+        w._move_to(len(w.sessions) - 1, 0)
+        assert sum(1 for s in w.sessions if s.get("star")) == 5 and "collector" in w._badges(), w._badges()
 
         EditDialog = tl.EditDialog(w, None, lambda e: None)
         EditDialog.destroy()
