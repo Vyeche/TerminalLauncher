@@ -593,9 +593,10 @@ CAT_LINE, CAT_PINK, CAT_EYE = (0.24, 0.22, 0.27), (0.96, 0.55, 0.62), (0.20, 0.1
 
 
 def cat_pose(**kw):
-    """The cat's pose. blink_*: 0 open .. 1 shut; tail and look: -1..1; hop, paw, ear: 0..1."""
+    """The cat's pose. blink_*: 0 open .. 1 shut; tail and look: -1..1; hop, paw, ear: 0..1;
+    step: the walking phase in radians (None when it isn't walking); facing: 1 right, -1 left."""
     p = {"blink_l": 0.0, "blink_r": 0.0, "mouth": "w", "ear": 0.0, "tail": 0.0, "hop": 0.0,
-         "paw": 0.0, "look": 0.0, "sleep": False, "blush": False}
+         "paw": 0.0, "look": 0.0, "sleep": False, "blush": False, "step": None, "facing": 1}
     p.update(kw)
     return p
 
@@ -612,7 +613,13 @@ def draw_cat(cr, size, p):
 
     cr.save()
     cr.scale(size / 114, size / 114)
-    cr.translate(7, 13 - p["hop"] * 12)          # room above for the hop
+    if p.get("facing", 1) < 0:                    # walking left: draw it mirrored
+        cr.translate(114, 0); cr.scale(-1, 1)
+    step = p.get("step")
+    bob = 1.8 * abs(math.sin(step)) if step is not None else 0.0
+    if step is not None:
+        p = dict(p, tail=0.6 * math.sin(step * 0.5), look=0.6)
+    cr.translate(7, 13 - p["hop"] * 12 - bob)    # room above for the hop
     cr.set_line_join(1); cr.set_line_cap(1)      # round
     t = p["tail"]                                 # the tail, swishing
     cr.move_to(66, 84)
@@ -623,13 +630,14 @@ def draw_cat(cr, size, p):
     cr.curve_to(24, 70, 34, 56, 50, 56); cr.curve_to(66, 56, 76, 70, 72, 92); cr.close_path()
     fill_stroke(CAT_FUR)
     ellipse(50, 80, 11, 11); cr.set_source_rgb(*CAT_BELLY); cr.fill()
-    ellipse(40, 92, 6, 4); fill_stroke(CAT_FUR)    # paws; the right one waves
+    lift = 3.5 * math.sin(step) if step is not None else 0.0    # walking: the paws take turns
+    ellipse(40, 92 - max(0.0, lift), 6, 4); fill_stroke(CAT_FUR)    # paws; the right one waves
     if p["paw"] > 0:
         a = p["paw"]
         cr.save(); cr.translate(70 + 4 * a, 80 - 26 * a); cr.rotate(-0.6 * a)
         ellipse(0, 0, 5.5, 6.5); fill_stroke(CAT_FUR); cr.restore()
     else:
-        ellipse(60, 92, 6, 4); fill_stroke(CAT_FUR)
+        ellipse(60, 92 - max(0.0, -lift), 6, 4); fill_stroke(CAT_FUR)
     for side, twitch in ((-1, p["ear"]), (1, 0.0)):   # ears; the left one twitches
         cr.save(); cr.translate(50 + side * 15, 22); cr.rotate(side * 0.25 - twitch * 0.35)
         cr.move_to(-9, 8); cr.line_to(0, -12); cr.line_to(9, 8); cr.close_path(); fill_stroke(CAT_FUR)
@@ -684,6 +692,68 @@ def cat_line(kind, now, extra=None):
     if kind == "joke":
         return CAT_JOKES[(day * 7) % len(CAT_JOKES)]
     return f"Did you know? {CAT_TIPS[(day * 5 + (extra or 0)) % len(CAT_TIPS)]}"
+
+
+# ---------- where Byte goes ----------
+CAT_SPEED = 220.0   # px per second when walking
+
+
+def cat_step(pos, target, dt, speed=CAT_SPEED):
+    """One frame of walking: move pos (x, y) toward target by at most speed × dt.
+    Returns (x, y, arrived)."""
+    dx, dy = target[0] - pos[0], target[1] - pos[1]
+    dist = math.hypot(dx, dy)
+    if dist <= max(speed * dt, 0.5):
+        return target[0], target[1], True
+    k = speed * dt / dist
+    return pos[0] + dx * k, pos[1] + dy * k, False
+
+
+def cat_route(pos, target, floor):
+    """The way a cat gets somewhere without walking over the list: down to the floor, along the
+    floor, then straight up (the margins and the window's edges are empty). Returns the waypoints."""
+    (x, y), (tx, ty) = pos, target
+    points = []
+    if abs(y - floor) > 2 and abs(tx - x) > 2:
+        points.append((x, floor))
+        y = floor
+    if abs(tx - x) > 2:
+        points.append((tx, y))
+    if abs(ty - y) > 2 or not points:
+        points.append((tx, ty))
+    return points
+
+
+def cat_spot(kind, w, h, size, rng, list_box=None, side=None):
+    """A place for the cat in a w × h window, as (x, y) of its top-left corner, or None if there's no
+    room for that kind. kind: "floor" (along the bottom), "margin" (in the empty space beside the
+    list, when the window is wide enough; list_box = the list's (x, y, width, height)), "peek" (half
+    outside the left or right edge) or "outside" (just past an edge, on the floor). side: "left" or
+    "right", else chosen at random."""
+    floor = max(0.0, h - size - 6)
+    if kind == "floor":                          # with a side: only that half of the floor
+        lo, hi = 8, max(8, w - size - 8)
+        if side == "left":
+            hi = max(lo, w / 2 - size)
+        elif side == "right":
+            lo = min(hi, w / 2)
+        return rng.uniform(lo, hi), floor
+    side = side or rng.choice(["left", "right"])
+    if kind == "margin":
+        if not list_box:
+            return None
+        lx, ly, lw, lh = list_box
+        room = lx if side == "left" else w - (lx + lw)
+        if room < size + 8:
+            return None
+        x = (room - size) / 2 if side == "left" else lx + lw + (room - size) / 2
+        top, bottom = max(ly, 8), min(ly + lh, floor) - size
+        return (x, rng.uniform(top, bottom)) if bottom > top else (x, floor)
+    if kind == "peek":
+        return (-size * 0.45 if side == "left" else w - size * 0.55), rng.uniform(h * 0.3, max(h * 0.3, floor))
+    if kind == "outside":
+        return (-size - 24 if side == "left" else w + 24), floor
+    raise ValueError(kind)
 
 
 # ---------- Byte watches the launcher's kitty window ----------
@@ -822,7 +892,11 @@ row.dragging { opacity: 0.4; }
 row.glow { animation: tl-glow 1300ms ease-out; }
 @keyframes tl-press { 0% { transform: scale(1); } 45% { transform: scale(0.82); } 100% { transform: scale(1); } }
 .press { animation: tl-press 260ms ease-out; }
-.cat-says { font-style: italic; }
+.tl-page clamp { margin-bottom: 76px; }
+.cat-bubble { background-color: @popover_bg_color; color: @popover_fg_color; border-radius: 14px;
+              padding: 7px 12px; margin: 4px; box-shadow: 0 1px 4px alpha(black, 0.28);
+              font-style: italic; transition: opacity 400ms ease-out; }
+.cat-bubble.faded { opacity: 0; }
 """
 KIND_ICONS = {"claude": "chat-symbolic", "omp": "chat-symbolic", "opencode": "chat-symbolic",
               "terminal": "utilities-terminal-symbolic", "command": "system-run-symbolic"}
@@ -1014,56 +1088,197 @@ class EditDialog(Adw.Window):
         self.close()
 
 
-class Cat(Gtk.Box):
-    """The cat's bar: the drawn cat, what it says, and the Badges button. `now` and `rng` can be
-    replaced (tests pin the clock). Its timers run only while it's shown."""
-    SIZE = 72
+class Cat:
+    """Byte on the window: a drawn cat and a speech bubble, floating over everything on a Gtk.Overlay
+    (under the toasts). It sits on the floor or in the margins beside the list, walks between them,
+    peeks in from the edges and now and then goes outside for a while. Only the cat itself takes
+    clicks; the bubble and the space around it let them through. `now` and `rng` can be replaced
+    (tests pin them). Its timers run only while it's shown."""
+    SIZE = 64
 
-    def __init__(self, on_pet, on_badges, now=None, rng=None):
-        super().__init__(spacing=12, margin_start=12, margin_end=12, margin_top=4, margin_bottom=6,
-                         css_classes=["cat-bar"])
+    def __init__(self, overlay, on_pet, now=None, rng=None):
         import random
+        self.overlay = overlay
         self.now = now or datetime.now
         self.rng = rng or random.Random()
         self.pose = cat_pose()
         self.anims = []            # (start, length, kind)
         self.timers = []
-        self.until = 0.0           # a line set by say() stays until then
+        self.until = 0.0           # the bubble stays up until then
+        self.next_talk = time.monotonic() + 45
+        self.next_move = time.monotonic() + 8
         self.turn = 0
-        self.area = Gtk.DrawingArea(content_width=self.SIZE, content_height=self.SIZE, valign=Gtk.Align.END,
+        self.visible = True
+        self.list_box = lambda: None   # the Window gives the list's (x, y, w, h) on the overlay
+        self.x, self.y = 12.0, 0.0
+        self.target = None         # (x, y) while walking
+        self.path = []             # the waypoints after it
+        self.spot = "floor"        # floor, margin, row, peek, away
+        self.away_until = 0.0
+        self.back_at = 0.0         # leave a "row" or "peek" spot by then
+        self.facing = 1
+        self.phase = 0.0
+        self.last_frame = 0.0
+        self.placed = False
+        self.area = Gtk.DrawingArea(content_width=self.SIZE, content_height=self.SIZE,
+                                    halign=Gtk.Align.START, valign=Gtk.Align.START,
                                     tooltip_text="Byte, the launcher's cat. Click to say hi.")
         self.area.set_draw_func(lambda _a, cr, w, h: draw_cat(cr, min(w, h), self._pose_now()))
         self.area.update_property([Gtk.AccessibleProperty.LABEL], ["Byte, the launcher's cat"])
         click = Gtk.GestureClick()
-        click.connect("released", lambda *_: on_pet())
+        click.connect("released", lambda *_: (self._cancel_scoot(), on_pet()))
         self.area.add_controller(click)
+        hover = Gtk.EventControllerMotion()   # rest the pointer on it and it makes room
+        hover.connect("enter", lambda *_: self._arm_scoot())
+        hover.connect("leave", lambda *_: self._cancel_scoot())
+        self.area.add_controller(hover)
+        self.scoot_timer = 0
         self.area.set_cursor(Gdk.Cursor.new_from_name("pointer"))
-        self.label = Gtk.Label(xalign=0, wrap=True, lines=2, ellipsize=3, hexpand=True,
-                               valign=Gtk.Align.CENTER, css_classes=["cat-says"])
-        self.badges_btn = Gtk.Button(css_classes=["flat"], valign=Gtk.Align.CENTER,
-                                     tooltip_text="Your badges, and the quests that earn the rest")
-        self.badges_btn.connect("clicked", lambda *_: on_badges())
-        self.append(self.area)
-        self.append(self.label)
-        self.append(self.badges_btn)
+        self.label = Gtk.Label(wrap=True, max_width_chars=34, lines=4, ellipsize=3, xalign=0)
+        self.bubble = Gtk.Box(css_classes=["cat-bubble"], halign=Gtk.Align.START, valign=Gtk.Align.START,
+                              can_target=False)
+        self.bubble.append(self.label)
+        overlay.add_overlay(self.area)
+        overlay.add_overlay(self.bubble)
+        overlay.connect("get-child-position", self._place)
         self.set_badge_count(0)
-        self.say(cat_line("greeting", self.now()), 20)
+        self.say(cat_line("greeting", self.now()), 12)
+
+    # ---------- where it is ----------
+    def size(self):
+        return max(1, self.overlay.get_width()), max(1, self.overlay.get_height())
+
+    def _place(self, _overlay, child, rect):
+        w, h = self.size()
+        if not self.placed and h > self.SIZE * 2:      # first time: sit on the floor, left
+            self.x, self.y, self.placed = 12.0, h - self.SIZE - 6.0, True
+        if child is self.area:
+            rect.x, rect.y, rect.width, rect.height = round(self.x), round(self.y), self.SIZE, self.SIZE
+            return True
+        if child is self.bubble:
+            _min, nat = child.get_preferred_size()
+            bw, bh = min(nat.width, max(80, w - 12)), nat.height
+            cx = min(max(self.x, 0), w - self.SIZE)       # a cat outside still talks from the edge
+            bx = min(max(cx + self.SIZE / 2 - bw / 2, 6), max(6, w - bw - 6))
+            by = self.y - bh - 4
+            if by < 6:
+                by = self.y + self.SIZE + 4
+            rect.x, rect.y, rect.width, rect.height = round(bx), round(min(by, h - bh - 6)), bw, bh
+            return True
+        return False
+
+    def _relayout(self):
+        self.overlay.queue_allocate()
+
+    def go(self, x, y, spot):
+        """Walk to (x, y) (or jump there when animations are off) and call it `spot`."""
+        self.spot = spot
+        if not Gtk.Settings.get_default().get_property("gtk-enable-animations"):
+            self.x, self.y, self.target = x, y, None
+            self._relayout()
+            return
+        _w, h = self.size()
+        self.path = cat_route((self.x, self.y), (x, y), h - self.SIZE - 6)
+        self._next_leg()
+        self._ensure_frames()
+
+    def _next_leg(self):
+        self.target = self.path.pop(0) if self.path else None
+        if self.target and abs(self.target[0] - self.x) > 1:
+            self.facing = 1 if self.target[0] > self.x else -1
+
+    def wander(self, kind=None, side=None):
+        """Go somewhere: a kind of spot from cat_spot(), or one picked at random."""
+        w, h = self.size()
+        if kind is None:
+            r = self.rng.random()
+            kind = "floor" if r < 0.45 else "margin" if r < 0.75 else "peek" if r < 0.9 else "outside"
+        spot = cat_spot(kind, w, h, self.SIZE, self.rng, self.list_box(), side)
+        if kind == "outside":                      # remember the way out: it comes back the other way
+            side = side or self.rng.choice(["left", "right"])
+            self.exit_side = side
+            spot = cat_spot(kind, w, h, self.SIZE, self.rng, side=side)
+        if spot is None:
+            kind, spot = "floor", cat_spot("floor", w, h, self.SIZE, self.rng)
+        if kind == "outside":
+            self.away_until = time.monotonic() + self.rng.uniform(20, 60)
+            self.say(self.rng.choice(["Back in a bit.", "Going out for a stretch.", "I'll be right back."]), 4)
+        if kind == "peek":
+            self.back_at = time.monotonic() + self.rng.uniform(8, 16)
+        self.go(*spot, "away" if kind == "outside" else kind)
+
+    def come_back(self, side=None):
+        """From outside: appear just past the edge across from the one it left by, and walk in."""
+        w, h = self.size()
+        gone = getattr(self, "exit_side", None)
+        side = side or {"left": "right", "right": "left"}.get(gone) or self.rng.choice(["left", "right"])
+        self.x, self.y = cat_spot("outside", w, h, self.SIZE, self.rng, side=side)
+        self.away_until = 0.0
+        self._relayout()
+        self.go(*cat_spot("floor", w, h, self.SIZE, self.rng), "floor")
+
+    def visit(self, widget):
+        """Go and sit beside a row (in the margin when there's room, else on the floor below it)."""
+        if not self.visible or widget is None:
+            return
+        ok, b = widget.compute_bounds(self.overlay)
+        if not ok:
+            return
+        w, h = self.size()
+        if self.spot == "away":
+            self.come_back()
+        lx = b.get_x()
+        y = min(max(b.get_y() + b.get_height() / 2 - self.SIZE / 2, 6), h - self.SIZE - 6)
+        if lx >= self.SIZE + 8:
+            self.go((lx - self.SIZE) / 2, y, "row")
+        else:
+            self.go(min(max(lx + 8, 8), w - self.SIZE - 8), h - self.SIZE - 6, "row")
+        self.back_at = time.monotonic() + 15
+
+    def on_scroll(self):
+        if self.spot == "row":                       # the row moved away under it
+            self.wander("floor")
+
+    def passthrough(self, on):
+        """While a row is dragged, the cat mustn't catch the drop."""
+        self.area.set_can_target(not on)
+
+    def _arm_scoot(self):
+        self._cancel_scoot()
+        self.scoot_timer = GLib.timeout_add(1200, self._scoot)
+
+    def _cancel_scoot(self):
+        if self.scoot_timer:
+            GLib.source_remove(self.scoot_timer)
+            self.scoot_timer = 0
+
+    def _scoot(self):
+        """The pointer rested on it without a click: it makes room."""
+        self.scoot_timer = 0
+        w, _h = self.size()
+        self.wander("floor", side="right" if self.x < w / 2 else "left")
+        return False
 
     # ---------- what it says ----------
     def say(self, text, hold=12):
-        """Say something now and keep it up for `hold` seconds before the next idle line."""
+        """Say something now; the bubble stays up for `hold` seconds, then fades out."""
         self.label.set_label(text)
-        self.label.set_tooltip_text(text)
+        self.area.set_tooltip_text(f"{text}\n\n{self.tip_base}" if hasattr(self, "tip_base") else text)
         self.until = time.monotonic() + hold
+        self.bubble.remove_css_class("faded")
+        self.bubble.set_visible(self.visible)
+        self._relayout()
 
     def next_line(self):
         kinds = ["word", "joke", "tip", "greeting"]
         kind = kinds[self.turn % len(kinds)]
         self.turn += 1
-        self.say(cat_line(kind, self.now(), self.turn), 45)
+        self.next_talk = time.monotonic() + 45
+        self.say(cat_line(kind, self.now(), self.turn), 10)
 
     def set_badge_count(self, n):
-        self.badges_btn.set_label(f"🏅 {n}/{len(BADGES)}")
+        self.tip_base = f"Byte, the launcher's cat. 🏅 {n}/{len(BADGES)} badges. Click to say hi."
+        self.area.set_tooltip_text(self.tip_base)
 
     # ---------- moving ----------
     def asleep(self):
@@ -1075,21 +1290,38 @@ class Cat(Gtk.Box):
         if not Gtk.Settings.get_default().get_property("gtk-enable-animations"):
             return
         self.anims.append((time.monotonic(), length, kind))
-        if not any(t[0] == "frame" for t in self.timers):
+        self._ensure_frames()
+
+    def _ensure_frames(self):
+        if self.visible and not any(t[0] == "frame" for t in self.timers):
+            self.last_frame = time.monotonic()
             self.timers.append(("frame", GLib.timeout_add(33, self._frame)))
 
     def _frame(self):
         now = time.monotonic()
+        dt, self.last_frame = min(0.1, now - self.last_frame), now
         self.anims = [a for a in self.anims if now - a[0] < a[1]]
+        if self.target:
+            self.x, self.y, arrived = cat_step((self.x, self.y), self.target, dt)
+            self.phase += dt * 11
+            if arrived:
+                self._next_leg()
+            self._relayout()
         self.area.queue_draw()
-        if self.anims:
+        if self.anims or self.target:
             return True
         self.timers = [t for t in self.timers if t[0] != "frame"]
         return False
 
     def _pose_now(self):
         p = dict(self.pose)
-        p["sleep"] = self.asleep() and not self.anims
+        p["facing"] = self.facing
+        p["sleep"] = self.asleep() and not self.anims and not self.target
+        p["step"] = self.phase if self.target else None
+        if self.spot == "peek" and not self.target:   # peeking in from the edge looks inward
+            w, _h = self.size()
+            p["facing"] = 1 if self.x < w / 2 else -1
+            p["look"] = 0.8 if self.x < w / 2 else -0.8
         now = time.monotonic()
         for start, length, kind in self.anims:
             f = min(1.0, (now - start) / length)
@@ -1116,14 +1348,35 @@ class Cat(Gtk.Box):
         return p
 
     def _idle(self):
-        """Once a second: maybe blink or do something small; now and then a new line."""
-        r = self.rng.random()
-        if not self.asleep():
+        """Once a second: maybe blink or do something small, wander now and then, talk now and then,
+        and let the bubble fade when its time is up."""
+        now = time.monotonic()
+        w, h = self.size()
+        if self.spot != "away" and not self.target and (self.x > w - self.SIZE * 0.4 or self.y > h - self.SIZE + 2) \
+                and self.spot != "peek":
+            self.wander("floor")                      # the window got smaller: back inside
+        elif self.spot == "floor" and not self.target and abs(self.y - (h - self.SIZE - 6)) > 2:
+            self.go(min(max(self.x, 8), max(8, w - self.SIZE - 8)), h - self.SIZE - 6, "floor")   # it got bigger
+        if self.spot == "away":
+            if now > self.away_until:
+                self.come_back()
+                self.say(self.rng.choice(["Back! I saw a bird.", "I'm back. Did I miss anything?",
+                                          "Back from my walk. All quiet?"]), 6)
+        elif not self.asleep() and not self.target:
+            r = self.rng.random()
             if r < 0.22:
                 self.play("blink", 0.18)
             elif r < 0.25:
                 self.play(self.rng.choice(["tail", "ear", "look", "wink"]), 1.0)
-        if time.monotonic() > self.until:
+            if self.spot in ("row", "peek") and now > self.back_at:
+                self.wander("floor")
+            elif now > self.next_move:
+                self.next_move = now + self.rng.uniform(25, 60)
+                self.wander()
+        if now > self.until and self.bubble.get_visible() and not self.bubble.has_css_class("faded"):
+            self.bubble.add_css_class("faded")
+            GLib.timeout_add(450, lambda: (now > self.until and self.bubble.set_visible(False)) and False)
+        if now > self.next_talk and self.spot != "away":
             self.next_line()
         self.area.queue_draw()
         return True
@@ -1137,8 +1390,24 @@ class Cat(Gtk.Box):
             GLib.source_remove(tid)
         self.timers = []
         self.anims = []
+        self.target = None
+        self.path = []
+        self._cancel_scoot()
+
+    def get_visible(self):
+        return self.visible
+
+    def set_visible(self, on):
+        self.visible = on
+        self.area.set_visible(on)
+        self.bubble.set_visible(on and time.monotonic() < self.until)
+        if not on:
+            self.stop()
 
     def react(self, move, text, hold=8):
+        """Say `text` with a little move. From outside it comes back first, so nothing is missed."""
+        if self.spot == "away":
+            self.come_back()
         self.say(text, hold)
         self.play(move, {"blink": 0.18, "hop": 0.5, "wave": 1.1, "nod": 0.5}.get(move, 0.8))
 
@@ -1234,9 +1503,11 @@ class Window(Adw.ApplicationWindow):
         self.open_btn.connect("clicked", lambda *_: self._open_many())
         header.pack_end(self.open_btn)
         tv.add_top_bar(header)
-        self.cat = Cat(self._pet, self._show_badges)
+        self.stage = Gtk.Overlay()   # Byte walks around on this, over the window and under the toasts
+        self.stage.set_child(tv)
+        self.cat = Cat(self.stage, self._pet)
+        self.cat.list_box = self._list_box
         self.cat.set_badge_count(len(self._badges()))
-        tv.add_bottom_bar(self.cat)
         self.cat.set_visible(self.cat_on)
         if self.cat_on:
             self.cat.start()
@@ -1247,7 +1518,7 @@ class Window(Adw.ApplicationWindow):
         if self.mode not in stats.get("modes", []):   # for the Explorer badge
             self._set_stat("modes", stats.get("modes", []) + [self.mode])
 
-        self.page = Adw.PreferencesPage()
+        self.page = Adw.PreferencesPage(css_classes=["tl-page"])
         how = Adw.PreferencesGroup()
         self.mode_row = Adw.ComboRow(title="Open in", model=Gtk.StringList.new([m[1] for m in MODE_ROWS]),
                                      tooltip_text="Where ▶ and the button at the top open terminals. Remembered.")
@@ -1283,7 +1554,7 @@ class Window(Adw.ApplicationWindow):
         self.stack.add_named(self.page, "list")
         self.stack.add_named(self.empty, "empty")
         tv.set_content(self.stack)
-        self.toasts.set_child(tv)
+        self.toasts.set_child(self.stage)
         self.set_content(self.toasts)
 
         keys = Gtk.ShortcutController(scope=Gtk.ShortcutScope.GLOBAL)
@@ -1300,6 +1571,34 @@ class Window(Adw.ApplicationWindow):
         Gtk.StyleContext.add_provider_for_display(self.get_display(), css,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self._rebuild()
+        adj = self._vadjustment()
+        if adj:                                     # the row Byte sat beside scrolls away: it moves
+            adj.connect("value-changed", lambda *_: self.cat.on_scroll())
+
+    def _list_box(self):
+        """Where the list is on the window, as (x, y, width, height), for Byte's margin spots."""
+        boxes = [g.compute_bounds(self.stage) for g in self.groups]
+        boxes = [b for ok, b in boxes if ok]
+        if not boxes:
+            return None
+        x0, y0 = min(b.get_x() for b in boxes), min(b.get_y() for b in boxes)
+        x1 = max(b.get_x() + b.get_width() for b in boxes)
+        y1 = max(b.get_y() + b.get_height() for b in boxes)
+        return x0, y0, x1 - x0, y1 - y0
+
+    def _visit(self, entry):
+        """Byte goes and sits beside this entry's row (after the list is rebuilt)."""
+        if not self.cat_on:
+            return
+
+        def go():
+            i = self._index(entry)              # looked up now: the list may have changed meanwhile
+            if i is not None and i < len(self.rows):
+                self.cat.visit(self.rows[i])
+            return False
+        # wait until GTK has laid the rebuilt list out (an idle callback comes too early after a drag,
+        # so the row would be measured where it isn't yet)
+        GLib.timeout_add(250, go)
 
     def _toast(self, msg):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(msg), timeout=3))
@@ -1312,6 +1611,7 @@ class Window(Adw.ApplicationWindow):
         self.groups = []
         self.play_btns = []
         self.star_btns = []
+        self.rows = []
         self.checked = set()
         self.ticks = []
         n = len(self.sessions)
@@ -1392,6 +1692,7 @@ class Window(Adw.ApplicationWindow):
             self.play_btns.append(play)
             row.add_suffix(play)
             (fav_group if starred else self.group).add(row)
+            self.rows.append(row)
             if s is flash:
                 GLib.idle_add(lambda r=row, b=star: (self._animate(r, "glow", 1300),
                                                      self._animate(b, "star-pop", 420)) and False)
@@ -1620,6 +1921,8 @@ class Window(Adw.ApplicationWindow):
         save_sessions(self.sessions)
         self._rebuild_keeping(ticked, flash=entry if on else None)
         self._sound("star" if on else "unstar")
+        if on:
+            self._visit(entry)
         name = entry.get("name") or short_path(entry["folder"])
         if not on:
             self._say("ear", f"Removed {name} from favorites. Back with the others.")
@@ -1657,6 +1960,7 @@ class Window(Adw.ApplicationWindow):
             return Gdk.ContentProvider.new_for_value(GObject.Value(GObject.TYPE_INT, i))
 
         def begin(_src, drag):
+            self.cat.passthrough(True)
             snap = Gtk.WidgetPaintable(widget=row).get_current_image()
             row.add_css_class("dragging")
             icon = Gtk.DragIcon.get_for_drag(drag)
@@ -1666,6 +1970,7 @@ class Window(Adw.ApplicationWindow):
             drag.set_hotspot(int(self._drag_hot[0]), int(self._drag_hot[1]))
 
         def end(_src, _drag, _deleted):
+            self.cat.passthrough(False)
             row.remove_css_class("dragging")
             self._drag_from = None
             self._edge_scroll(0)
@@ -1721,6 +2026,7 @@ class Window(Adw.ApplicationWindow):
         self.sessions = favorites_first(self.sessions)
         save_sessions(self.sessions)
         self._rebuild_keeping(ticked, flash=moved if crossed and moved.get("star") else None)
+        self._visit(moved)
         awarded = self._award("tidy-paws")
         if not crossed:
             self._sound("drop")
@@ -1819,6 +2125,7 @@ class Window(Adw.ApplicationWindow):
             return
         awarded = self._count_opens([s])
         self._sound("open")
+        self._visit(s)
         if s.get("opens", 0) >= 3 and not s.get("star") and not awarded and self._tip(
                 "suggest-star", f"you open {name} a lot. Star it to keep it at the top?",
                 button="Star it", on_click=lambda: self._set_star(s, True)):

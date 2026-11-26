@@ -8,7 +8,7 @@ the video, on a HIDDEN Xvfb display with a made-up list in a throwaway home fold
   probe      WORK_DIR/probe-*.png: the window, the Add dialog and two menus with a cross on every
              target the scenes click, and WORK_DIR/layout-*.json. Run it first after the window's
              layout changes; it writes nothing in the repo.
-  stills     docs/images/window.png (two favorites, Byte in its bar), window-dark.png, edit.png,
+  stills     docs/images/window.png (two favorites, Byte in the right margin), window-dark.png, edit.png,
              badges.png (the Badges window), and WORK_DIR/window-2x.png for tools/social_preview.py
   drag       docs/images/gifs/drag.gif     (also a real test of dragging: exits 1 if the saved order
                                             isn't the one the drag asked for)
@@ -16,14 +16,17 @@ the video, on a HIDDEN Xvfb display with a made-up list in a throwaway home fold
   add        docs/images/gifs/add.gif
   favorites  docs/images/gifs/favorites.gif  (☆ on a row: it pops, glows and moves up; then another
                                               row is dragged into Favorites; checks both got starred)
-  cat        docs/images/gifs/cat.gif    (the bottom of the window: Byte's own idle blink or swish,
-                                          a pet, then a star that earns the First star badge)
+  cat        docs/images/gifs/cat.gif    (Byte roams: along the floor and up into the right margin, a
+                                          pet, then out past an edge and back in)
   tour       WORK_DIR/tour.mkv + tour.json at 2x scale, for tools/compose_tour.py: captions, clicks,
              drags and the sounds the app asked for, each with its time in the take
 
 Each scene seeds settings.json: every tip counts as seen and the badges it isn't about count as
 earned (Polyglot is announced at startup otherwise), so the cat says what the scene is about.
-Byte's idle moves are random and it naps from 23:00 to 06:00 by the real clock: capture by day.
+Byte's own wandering and chatter are put off in every scene (tools/app_probe.py "hold", which also
+seeds its random choices), and the scenes send it where they want it ("wander", "come_back"); it
+still walks to a row by itself after a star, an open or a drag, as the app does. It naps from 23:00
+to 06:00 by the real clock: capture by day.
 
 No coordinates to measure: the app runs under tools/app_probe.py, which reports every widget's box
 (WORK_DIR/probe/layout.json), and the scenes click widgets by what they are ("the ☆ of the row
@@ -203,11 +206,11 @@ class Rig:
         except (OSError, ValueError):
             return {}
 
-    def start(self, sessions, mode="kitty", scale=1, dark=False, settings=None):
+    def start(self, sessions, mode="kitty", scale=1, dark=False, settings=None, hold=True):
         self.stop()
         self.config(sessions, mode, settings)
         self.scale = scale
-        for f in ("sounds.jsonl", "cat.jsonl", "layout.json", "request"):
+        for f in ("sounds.jsonl", "cat.jsonl", "layout.json", "request", "cmd", "cmd.out"):
             if os.path.exists(os.path.join(self.probe, f)):
                 os.remove(os.path.join(self.probe, f))
         env = {"PATH": f"{self.bin}:/usr/bin:/bin", "HOME": self.home, "TL_PROBE_HOME": self.home,
@@ -239,6 +242,8 @@ class Rig:
             sys.exit("capture_media.py: couldn't size the window")
         self.X.move(*self.p(*self.park()))
         time.sleep(1.2)
+        if hold:                           # Byte's own wandering and chatter wait for the scene
+            self.cat_cmd("hold", seed=7)
 
     def stop(self):
         if self.app and self.app.poll() is None:
@@ -315,6 +320,7 @@ class Rig:
             sys.exit(f"capture_media.py: the probe couldn't read the window: {dump['error']} "
                      f"(see {self.probe}/probe.log)")
         widgets = dump["widgets"]
+        self.cat_info = dump.get("cat")
         offs = {w[5]: (w[1] / self.scale, w[2] / self.scale) for w in self.X.windows() if not w[6]}
         for e in widgets:
             ox, oy = offs.get(e["win"], (0, 0))
@@ -387,12 +393,41 @@ class Rig:
         """A point on Byte, the cat in the bar at the bottom."""
         return self.at(fx=fx, fy=fy, type="GtkDrawingArea", pop=False)
 
-    def badges_button(self):
-        return self.at(type="GtkButton", tooltip="Your badges", pop=False)
+    def cat_cmd(self, op, **kw):
+        """Tell Byte to do something (through tools/app_probe.py: only its own methods)."""
+        cmd, out = os.path.join(self.probe, "cmd"), os.path.join(self.probe, "cmd.out")
+        if os.path.exists(out):
+            os.remove(out)
+        with open(cmd + ".tmp", "w") as f:
+            json.dump(dict(kw, op=op), f)
+        os.replace(cmd + ".tmp", cmd)
+        end = time.time() + 4
+        while not os.path.exists(out):
+            if time.time() > end:
+                sys.exit(f"capture_media.py: the probe didn't run {op!r} (see {self.probe}/probe.log)")
+            time.sleep(0.02)
+        with open(out) as f:
+            answer = json.load(f)
+        if "error" in answer:
+            sys.exit(f"capture_media.py: Byte couldn't {op}: {answer['error']}")
+        return answer["ok"]
 
-    def cat_bar(self):
-        """The cat's bar (logical px box)."""
-        return self.find(css="cat-bar", pop=False)["box"]
+    def cat_state(self):
+        """Where Byte is: {"spot", "x", "y", "walking", "area", "bubble", "bubble_shown", "says", ...}."""
+        self.layout()
+        return self.cat_info or {}
+
+    def wait_cat(self, timeout=12, settle=0.15):
+        """Wait until Byte stops walking. Returns its state."""
+        end = time.time() + timeout
+        while time.time() < end:
+            st = self.cat_state()
+            if not st.get("walking"):
+                time.sleep(settle)
+                return st
+            time.sleep(0.05)
+        log("Byte is still walking after the wait")
+        return self.cat_state()
 
     def cat_moves(self):
         """[(unix time, move)] of every move the cat started (its idle ones too)."""
@@ -568,7 +603,11 @@ def drag_onto(r, name, target, events=None, duration=1.6, settle=0.8):
     tx, ty = r.row_part(target, "text")
     released = r.drag(src, (src[0], ty - 6), duration=duration, events=events, settle=settle)
     r.glide(src[0] + 220, ty - 6, t=0.15)           # off the handle at once: its tooltip would be cut off
-    time.sleep(0.1)
+    time.sleep(0.2)
+    # The app sends Byte to the moved row right after the drop, but measures the row before the
+    # rebuilt list has its layout, so Byte heads for the wrong height (the top of the group, or the
+    # window's top). Sent again now, it finds the row. (Reported; drop this once the app waits.)
+    r.cat_cmd("visit", row=name)
     return released
 
 
@@ -650,8 +689,7 @@ def scene_probe(r):
         r.start(lst)
         pts = {k: r.header(k) for k in ("add", "folder", "open", "open-menu", "menu")}
         pts["cat"] = r.cat()
-        pts["badges"] = r.badges_button()
-        log(f"  cat bar at {r.cat_bar()}; list viewport at {r.find(type='GtkScrolledWindow', pop=False)['box']}")
+        log(f"  Byte: {r.cat_info}; list viewport at {r.find(type='GtkScrolledWindow', pop=False)['box']}")
         pts["open-in"] = r.at(type="AdwComboRow", title="Open in", fx=0.78)
         pts["park"] = r.park()
         pts.update(rows([s["name"] for s in lst]))
@@ -698,11 +736,24 @@ def scene_probe(r):
 def scene_stills(r):
     two = starred(SESSIONS, "Website redesign", "API server")
     seed = {"badges": badges("polyglot", "first-star")}
+
+    def byte_in_margin():
+        """Byte walks into the right margin; its greeting is still up (it lasts 12 s)."""
+        r.cat_cmd("wander", kind="margin", side="right")
+        st = r.wait_cat()
+        time.sleep(0.4)
+        if not r.cat_state().get("bubble_shown"):
+            log("WARNING: Byte's bubble had faded before the still")
+        return st
+
     r.start(two, settings=seed)
+    log(f"stills: Byte {byte_in_margin()}")
     r.still(os.path.join(IMAGES, "window.png"))
     r.start(two, dark=True, settings=seed)
+    byte_in_margin()
     r.still(os.path.join(IMAGES, "window-dark.png"))
     r.start(two, scale=2, settings=seed)
+    byte_in_margin()
     r.still(os.path.join(r.work, "window-2x.png"))
     r.start(two, settings=seed)
     menu_item(r, r.row_part("Website redesign", "more"), "Edit…", check=False)   # a still: no need to fit
@@ -711,8 +762,8 @@ def scene_stills(r):
     time.sleep(1.0)
     r.still(os.path.join(IMAGES, "edit.png"), DLG)
     r.start(two, settings={"badges": badges("polyglot", "first-star", "tidy-paws", "explorer", "squad")})
-    r.click(*r.badges_button(), t=0.2)
-    r.glide(BADGES_BOX[0] + BADGES_BOX[2] // 2, BADGES_BOX[1] + 20, t=0.1)   # off the button: no tooltip
+    menu_item(r, r.header("menu"), "Badges…", check=False)
+    r.glide(BADGES_BOX[0] + BADGES_BOX[2] // 2, BADGES_BOX[1] + 20, t=0.1)
     r.place_dialog("Badges", box=BADGES_BOX)
     time.sleep(1.0)
     r.still(os.path.join(IMAGES, "badges.png"), BADGES_BOX)
@@ -810,40 +861,57 @@ def scene_favorites(r):
         sys.exit("favorites test FAILED")
 
 
-IDLE_MOVES = ("blink", "tail", "wink")      # the ones that read in a GIF (a "look" barely shows)
+def pet(r, events=None, t=0.45):
+    """Click Byte (chirp, wink, its next line) and move off at once: resting on it shows its tooltip
+    after half a second and makes it walk away after 1.2 s."""
+    park = r.park()                                  # the window's title: no tooltip, and Byte never goes there
+    x, y = r.cat()
+    when = r.click(x, y, t=t, events=events)
+    r.glide(*park, t=0.3)
+    return when
+
+
+def margin_spot(r, side="right", rise=200):
+    """A place in the empty margin beside the list, `rise` px above the floor, in Byte's own (stage)
+    coordinates: the x the app's cat_spot() would choose there."""
+    st = r.cat_state()
+    sw, sh = st["stage"]
+    ox = st["area"][0] - st["x"]                     # window → stage offset (the window's frame)
+    rows = [e["box"] for e in r.layout() if e["type"] == "AdwActionRow" and e["row"] in
+            {s["name"] for s in SESSIONS} | {NEW_ENTRY[0]}]
+    left, right = min(b[0] for b in rows) - ox, max(b[0] + b[2] for b in rows) - ox
+    size = st["area"][2]
+    room = left if side == "left" else sw - right
+    x = (room - size) / 2 if side == "left" else right + (room - size) / 2
+    return round(x, 1), round(sh - size - 6 - rise, 1)
 
 
 def scene_cat(r):
-    """Byte up close (the bottom of the window): an idle blink or swish, a pet (chirp, wink, its next
-    line), then a star that makes it hop and announce the First star badge."""
-    r.start(SESSIONS)                                # all 8 rows: the list reaches down to the bar
-    top = r.find(type="AdwActionRow", title="Data pipeline")["box"][1] - 8
-    box = (0, int(top), WIN_W, WIN_H - int(top))
+    """Byte roams: along the floor and up into the right margin, a pet (wink and a line), then out
+    past the right edge and back in from the left."""
+    r.start(SESSIONS[:7])
     mkv = os.path.join(r.work, "cat.mkv")
-    rec, start = r.record(mkv, box)
-    rest = r.row_part("Data pipeline", "text")
-    r.glide(*rest, t=0.3)
-    t0, idle = time.time(), None
-    while time.time() - t0 < 15 and idle is None:    # wait for one of its own idle moves
-        idle = next((t for t, m in r.cat_moves() if m in IDLE_MOVES and t > t0), None)
-        time.sleep(0.05)
-    if idle is None:
-        log("the cat made no idle move in 15 s; going on without one")
-        idle = time.time()
-    time.sleep(max(0.0, idle + 1.0 - time.time()))
-    r.click(*r.cat(), t=0.45)                        # pet: chirp, wink, its next line
-    r.glide(*rest, t=0.25)                           # off the cat and its words (both have tooltips)
-    time.sleep(2.0)
-    star(r, "htop", t=0.5)                           # hop, blush, "New badge: First star!"
-    time.sleep(2.3)
+    rec, start = r.record(mkv)
+    r.glide(*r.park(), t=0.3)                        # the pointer waits on the title, out of the way
+    time.sleep(0.4)
+    x, y = margin_spot(r, "right", rise=200)
+    r.cat_cmd("go", x=x, y=y, spot="margin")          # along the floor, then up into the margin
+    st = r.wait_cat()
+    log(f"cat: in the margin {st.get('x')},{st.get('y')}")
+    time.sleep(0.4)
+    pet(r)
+    time.sleep(1.6)
+    r.cat_cmd("wander", kind="outside", side="right")    # "Back in a bit."
+    r.wait_cat()
+    time.sleep(0.6)
+    r.cat_cmd("come_back", side="left")
+    st = r.wait_cat()
+    time.sleep(0.7)
     r.stop_record(rec)
     moves = [m for t, m in r.cat_moves() if t > start]
-    got = r.settings().get("badges", {})
     r.stop()
-    log(f"cat: moves {moves}; badges now {sorted(got)}")
-    to_gif(mkv, os.path.join(IMAGES, "gifs", "cat.gif"), start=max(0.0, idle - start - 0.8), want=(6, 9))
-    if "first-star" not in got:
-        sys.exit("cat test FAILED: no First star badge")
+    log(f"cat: ended at {st.get('spot')} {st.get('x')},{st.get('y')}; moves {moves}")
+    to_gif(mkv, os.path.join(IMAGES, "gifs", "cat.gif"), start=0.6, want=(8, 12))
 
 
 def scene_tour(r):
@@ -868,19 +936,38 @@ def scene_tour(r):
     beat("Your terminals and coding agents,|one click away")
     for n in ("Website redesign", "API server", "Mobile app"):
         r.glide(*r.row_part(n, "text"), t=0.3)
-    time.sleep(0.6)
+    time.sleep(0.4)
+
+    beat("Meet Byte, the launcher's cat")            # on the floor, bottom left, still greeting
+    expect("chirp", pet(r, events, t=0.5))
+    time.sleep(1.9)
+
+    beat("It roams: peeks in, pops out,|and comes back")
+    st = r.cat_state()
+    sw, sh = st["stage"]
+    size, floor = st["area"][2], st["stage"][1] - st["area"][2] - 6
+    r.cat_cmd("go", x=-size * 0.45, y=floor - 120, spot="peek")   # half out of the left edge, looking in
+    r.wait_cat()
+    time.sleep(0.9)
+    r.cat_cmd("wander", kind="outside", side="left")    # "Back in a bit."
+    r.wait_cat()
+    time.sleep(0.3)
+    r.cat_cmd("come_back", side="right")                # in from the right edge
+    r.cat_cmd("go", x=sw - size - 160, y=floor, spot="floor")
+    r.wait_cat()
+    time.sleep(0.3)
 
     beat("New: ★ star your favorites")
-    when = star(r, "Docs site", events, t=0.6)
+    when = star(r, "Docs site", events, t=0.6)      # Byte walks over to it
     expect("star", when)
     expect("badge", when + TIP_DELAY)                # Byte: "New badge: First star!"
-    time.sleep(2.3)
+    time.sleep(2.4)
 
     beat("Or drag one into Favorites")
     released = drag_onto(r, "Data pipeline", "Docs site", events, duration=1.1, settle=0.5)
     expect("star", released)
     r.glide(*r.row_part("Data pipeline", "text"), t=0.3)
-    time.sleep(0.6)
+    time.sleep(1.2)
 
     beat("Open all your favorites at once")
     used_menu = menu_item(r, r.header("open-menu"), "Open favorites", events)
@@ -892,15 +979,6 @@ def scene_tour(r):
     r.glide(*r.park(), t=0.35)
     time.sleep(1.3)
 
-    beat("Meet Byte, the launcher's cat")
-    cx, cy = r.cat()
-    for k in range(2):
-        expect("chirp", r.click(cx, cy, t=0.5 if k == 0 else 0.15, events=events))
-        r.glide(cx + 4, cy - 70, t=0.2)              # off the cat (it has a tooltip), onto the list
-        time.sleep(1.3)
-        if k == 0:
-            r.glide(cx + 2, cy - 4, t=0.2)
-
     beat("Tick a few,|open them together")
     for n in ("API server", "Dev server"):
         when = tick(r, n, events, t=0.4)
@@ -910,7 +988,7 @@ def scene_tour(r):
     ox, oy = r.header("open")
     expect("open", r.click(ox, oy, t=0.45, events=events))
     r.glide(*r.park(), t=0.25)
-    time.sleep(0.8)
+    time.sleep(0.9)
 
     beat("In kitty tabs, one window,|or separate windows")
     for label in ("One new window", "Separate windows"):   # kitty was the first; the rest is shown
@@ -927,14 +1005,7 @@ def scene_tour(r):
     released = drag_onto(r, NEW_ENTRY[0], "API server", events, duration=1.1, settle=0.5)
     expect("drop", released)
     r.glide(*r.park(), t=0.4)
-    time.sleep(0.5)
-
-    beat("Byte hands out badges|for little quests")
-    bx, by = r.badges_button()
-    clicked = r.click(bx, by, t=0.5, events=events)
-    r.glide(BADGES_BOX[0] + BADGES_BOX[2] // 2, BADGES_BOX[1] + 20, t=0.12)   # off the button: no tooltip
-    r.place_dialog("Badges", since=clicked, box=BADGES_BOX)
-    time.sleep(2.3)
+    time.sleep(1.6)                                  # Byte walks over to it
     events.append({"t": time.time(), "kind": "end"})
     r.stop_record(rec)
 
