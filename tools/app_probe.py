@@ -272,10 +272,10 @@ def _poll():
         except Exception as ex:   # noqa: BLE001
             note(f"command failed: {ex!r}")
             answer = {"error": repr(ex)}
+        os.remove(COMMAND)     # first, so a next command written after the reply isn't removed unread
         with open(COMMAND + ".out.tmp", "w") as f:
             json.dump(answer, f)
         os.replace(COMMAND + ".out.tmp", COMMAND + ".out")
-        os.remove(COMMAND)
     return True
 
 

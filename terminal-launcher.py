@@ -730,10 +730,15 @@ def cat_spot(kind, w, h, size, rng, list_box=None, side=None):
     list, when the window is wide enough; list_box = the list's (x, y, width, height)), "peek" (half
     outside the left or right edge) or "outside" (just past an edge, on the floor). side: "left" or
     "right", else chosen at random."""
-    side = side or rng.choice(["left", "right"])
     floor = max(0.0, h - size - 6)
-    if kind == "floor":
-        return rng.uniform(8, max(8, w - size - 8)), floor
+    if kind == "floor":                          # with a side: only that half of the floor
+        lo, hi = 8, max(8, w - size - 8)
+        if side == "left":
+            hi = max(lo, w / 2 - size)
+        elif side == "right":
+            lo = min(hi, w / 2)
+        return rng.uniform(lo, hi), floor
+    side = side or rng.choice(["left", "right"])
     if kind == "margin":
         if not list_box:
             return None
@@ -1189,6 +1194,10 @@ class Cat:
             r = self.rng.random()
             kind = "floor" if r < 0.45 else "margin" if r < 0.75 else "peek" if r < 0.9 else "outside"
         spot = cat_spot(kind, w, h, self.SIZE, self.rng, self.list_box(), side)
+        if kind == "outside":                      # remember the way out: it comes back the other way
+            side = side or self.rng.choice(["left", "right"])
+            self.exit_side = side
+            spot = cat_spot(kind, w, h, self.SIZE, self.rng, side=side)
         if spot is None:
             kind, spot = "floor", cat_spot("floor", w, h, self.SIZE, self.rng)
         if kind == "outside":
@@ -1199,9 +1208,10 @@ class Cat:
         self.go(*spot, "away" if kind == "outside" else kind)
 
     def come_back(self, side=None):
-        """From outside: appear just past an edge and walk in."""
+        """From outside: appear just past the edge across from the one it left by, and walk in."""
         w, h = self.size()
-        side = side or self.rng.choice(["left", "right"])
+        gone = getattr(self, "exit_side", None)
+        side = side or {"left": "right", "right": "left"}.get(gone) or self.rng.choice(["left", "right"])
         self.x, self.y = cat_spot("outside", w, h, self.SIZE, self.rng, side=side)
         self.away_until = 0.0
         self._relayout()
@@ -1578,11 +1588,17 @@ class Window(Adw.ApplicationWindow):
 
     def _visit(self, entry):
         """Byte goes and sits beside this entry's row (after the list is rebuilt)."""
-        i = self._index(entry)
-        if self.cat_on and i is not None and i < len(self.rows):
-            # wait until GTK has laid the rebuilt list out (an idle callback comes too early after a
-            # drag, so the row would be measured where it isn't yet)
-            GLib.timeout_add(250, lambda: (i < len(self.rows) and self.cat.visit(self.rows[i])) and False)
+        if not self.cat_on:
+            return
+
+        def go():
+            i = self._index(entry)              # looked up now: the list may have changed meanwhile
+            if i is not None and i < len(self.rows):
+                self.cat.visit(self.rows[i])
+            return False
+        # wait until GTK has laid the rebuilt list out (an idle callback comes too early after a drag,
+        # so the row would be measured where it isn't yet)
+        GLib.timeout_add(250, go)
 
     def _toast(self, msg):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(msg), timeout=3))

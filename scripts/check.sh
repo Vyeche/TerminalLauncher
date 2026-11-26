@@ -156,6 +156,8 @@ assert tl.cat_spot("margin", W, H, S, r, None) is None
 px, _ = tl.cat_spot("peek", W, H, S, r, side="left"); assert -S < px < 0, px
 px, _ = tl.cat_spot("peek", W, H, S, r, side="right"); assert W - S < px < W, px
 assert tl.cat_spot("outside", W, H, S, r, side="right")[0] > W and tl.cat_spot("outside", W, H, S, r, side="left")[0] < -S
+assert all(tl.cat_spot("floor", W, H, S, r, side="right")[0] >= W / 2 for _ in range(50)), "scoot right stays right"
+assert all(tl.cat_spot("floor", W, H, S, r, side="left")[0] <= W / 2 - S for _ in range(50)), "scoot left clears the middle"
 EOF
 
 echo "Login entry (save_sessions keeps the autostart file in step)"
@@ -352,6 +354,7 @@ def act(app):
         assert w.cat.spot == "away" and w.cat.away_until > time.monotonic(), w.cat.spot
         w.cat.react("hop", "hello")
         assert w.cat.spot == "floor" and w.cat.label.get_label() == "hello", (w.cat.spot, w.cat.label.get_label())
+        assert w.cat.x < 0, "left by the right edge, so it comes back from the left"
         w.cat.visit(w.rows[0])
         assert w.cat.spot == "row", w.cat.spot
         w.cat.on_scroll(); assert w.cat.spot == "floor", "a scroll left it beside a row"

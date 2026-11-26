@@ -7,7 +7,9 @@ launcher (see [Installing](Installing#updating)).
 - **Byte walks around:** it no longer sits in a bar at the bottom. It walks along the floor of the
   window, climbs up beside the list, visits the row you just starred or opened, peeks in from the
   edges and now and then goes outside for a while. Its words show in a speech bubble that fades. It
-  never walks across your list, and it gets out of the way of the pointer and of drags.
+  never walks across your list, and it gets out of the way of the pointer and of drags. It stays
+  inside the launcher's window (on Wayland an app can't place itself elsewhere on the screen) and
+  peeks over its edges.
   See [Byte the cat and badges](Byte-the-Cat#where-it-goes), or the new
   [50-second tour on YouTube](https://youtube.com/shorts/ncVhvALaJoo).
 
