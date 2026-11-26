@@ -14,7 +14,25 @@ PROBE_DIR/layout.json    written whenever PROBE_DIR/request appears (the request
                          every mapped widget of every window and open popover, with its box in
                          logical px inside its window (x, y, w, h), its type, text, tooltip, icon,
                          CSS classes, and the row and group around it. capture_media.py finds its
-                         click targets in it, so a new layout needs no new coordinates.
+                         click targets in it, so a new layout needs no new coordinates. Its "cat"
+                         part says where Byte is: spot (floor, margin, row, peek, away), x and y on
+                         the window's stage, whether it's walking, and its and its bubble's boxes.
+PROBE_DIR/cmd            a command for Byte, run on the app's own main loop (then removed; the
+                         answer goes to PROBE_DIR/cmd.out). Only the cat's own methods, so a scene
+                         can make it walk somewhere at a chosen moment:
+                           {"op": "hold", "seed": 7}   seed its random choices and put off its own
+                                                       wandering and chatter (blinks go on), and sit
+                                                       it on the floor again the app's own way (the
+                                                       recorder resizes the window after the app
+                                                       first placed it); "clock": "10:00" (the
+                                                       default) pins the hour Byte sees (the date
+                                                       stays today's) and it greets again for that
+                                                       hour, so the media never depends on when it
+                                                       was captured (Byte naps 23:00-06:00)
+                           {"op": "wander", "kind": "margin", "side": "right"}   Cat.wander()
+                           {"op": "come_back", "side": "left"}                   Cat.come_back()
+                           {"op": "visit", "row": "Docs site"}                   Cat.visit(that row)
+                           {"op": "go", "x": 300, "y": 880, "spot": "floor"}     Cat.go()
 
 Safety: it insists on the throwaway home (TL_PROBE_HOME must be set and equal HOME), always passes
 --dry-run, and swaps the app's press_move_shortcut (the /dev/uinput virtual keyboard behind
@@ -40,6 +58,7 @@ SOUNDS = os.path.join(PROBE, "sounds.jsonl")
 CAT = os.path.join(PROBE, "cat.jsonl")
 LAYOUT = os.path.join(PROBE, "layout.json")
 REQUEST = os.path.join(PROBE, "request")
+COMMAND = os.path.join(PROBE, "cmd")
 sys.argv = [APP, "--dry-run"] + [a for a in sys.argv[2:] if a != "--dry-run"]
 
 
@@ -165,13 +184,69 @@ def _layout():
             walk(c, native, base, win_title, pop, anc + [tname], row, group)
             c = c.get_next_sibling()
 
+    cat = None
     for win in Gtk.Window.list_toplevels():
         if win.get_mapped():
             walk(win, win, (0.0, 0.0), win.get_title() or "", False, [], None, None)
+            c = getattr(win, "cat", None)
+            if c is not None and hasattr(c, "spot"):
+                def box(widget):
+                    if not widget.get_mapped():
+                        return None
+                    ok, r = widget.compute_bounds(win)
+                    sx, sy = win.get_surface_transform()
+                    return [round(sx + r.get_x(), 1), round(sy + r.get_y(), 1),
+                            round(r.get_width(), 1), round(r.get_height(), 1)] if ok else None
+                cat = {"spot": c.spot, "x": round(c.x, 1), "y": round(c.y, 1), "walking": bool(c.target),
+                       "facing": c.facing, "area": box(c.area), "bubble": box(c.bubble),
+                       "bubble_shown": c.bubble.get_visible() and not c.bubble.has_css_class("faded"),
+                       "says": c.label.get_label(), "stage": [c.size()[0], c.size()[1]]}
     tmp = LAYOUT + ".tmp"
     with open(tmp, "w") as f:
-        json.dump({"t": time.time(), "widgets": out}, f)
+        json.dump({"t": time.time(), "widgets": out, "cat": cat}, f)
     os.replace(tmp, LAYOUT)
+
+
+def _cat():
+    from gi.repository import Gtk
+    for win in Gtk.Window.list_toplevels():
+        c = getattr(win, "cat", None)
+        if c is not None and hasattr(c, "wander"):
+            return win, c
+    raise RuntimeError("no window with a cat")
+
+
+def _command(cmd):
+    """Run one command for Byte (only its own methods). Returns a short answer."""
+    import random
+    win, c = _cat()
+    op = cmd.get("op")
+    if op == "hold":
+        c.rng = random.Random(cmd.get("seed", 7))
+        clock = cmd.get("clock", "10:00")
+        if clock:
+            from datetime import datetime
+            hh, mm = (int(v) for v in clock.split(":"))
+            c.now = lambda: datetime.now().replace(hour=hh, minute=mm)
+            c.say(APP_GLOBALS["g"]["cat_line"]("greeting", c.now()), 12)
+        c.next_move = c.next_talk = time.monotonic() + 1e6
+        c.placed = False                 # Cat._place() puts it on the floor, left, as at startup
+        c._relayout()
+        return "held"
+    if op == "wander":
+        c.wander(cmd.get("kind"), side=cmd.get("side"))
+    elif op == "come_back":
+        c.come_back(side=cmd.get("side"))
+    elif op == "visit":
+        rows = [r for r in getattr(win, "rows", []) if r.get_title() == cmd["row"]]
+        if not rows:
+            raise RuntimeError(f"no row {cmd['row']!r}")
+        c.visit(rows[0])
+    elif op == "go":
+        c.go(float(cmd["x"]), float(cmd["y"]), cmd.get("spot", "floor"))
+    else:
+        raise RuntimeError(f"unknown op {op!r}")
+    return f"{op}: spot {c.spot}, target {c.target}"
 
 
 def _poll():
@@ -190,6 +265,17 @@ def _poll():
             os.remove(REQUEST)
         except OSError:
             pass
+    if os.path.exists(COMMAND):
+        try:
+            with open(COMMAND) as f:
+                answer = {"ok": _command(json.load(f))}
+        except Exception as ex:   # noqa: BLE001
+            note(f"command failed: {ex!r}")
+            answer = {"error": repr(ex)}
+        with open(COMMAND + ".out.tmp", "w") as f:
+            json.dump(answer, f)
+        os.replace(COMMAND + ".out.tmp", COMMAND + ".out")
+        os.remove(COMMAND)
     return True
 
 

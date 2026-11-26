@@ -8,7 +8,8 @@ launcher (see [Installing](Installing#updating)).
   window, climbs up beside the list, visits the row you just starred or opened, peeks in from the
   edges and now and then goes outside for a while. Its words show in a speech bubble that fades. It
   never walks across your list, and it gets out of the way of the pointer and of drags.
-  See [Byte the cat and badges](Byte-the-Cat#where-it-goes).
+  See [Byte the cat and badges](Byte-the-Cat#where-it-goes), or the new
+  [50-second tour on YouTube](https://youtube.com/shorts/ncVhvALaJoo).
 
 ## 2026-11-25 (later)
 - **Byte the cat:** a little ginger cat at the bottom of the window blinks, winks, naps at night,
@@ -48,4 +49,4 @@ launcher (see [Installing](Installing#updating)).
   near its top or bottom edge, and your ticks and scroll position stay as they were. The new order is
   saved at once. **⋮ → Move up / Move down** are still there.
 
-  ![Dragging a row by its handle: a line shows where it will land, and the row moves there when dropped](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/drag.gif)
+  ![Dragging a row by its handle to a new place: the row fades, a blue line shows where it will land, the ticked rows stay ticked, and Byte says "Tidy!" and walks over to it](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/drag.gif)

@@ -1345,6 +1345,8 @@ class Cat:
         if self.spot != "away" and not self.target and (self.x > w - self.SIZE * 0.4 or self.y > h - self.SIZE + 2) \
                 and self.spot != "peek":
             self.wander("floor")                      # the window got smaller: back inside
+        elif self.spot == "floor" and not self.target and abs(self.y - (h - self.SIZE - 6)) > 2:
+            self.go(min(max(self.x, 8), max(8, w - self.SIZE - 8)), h - self.SIZE - 6, "floor")   # it got bigger
         if self.spot == "away":
             if now > self.away_until:
                 self.come_back()
@@ -1578,7 +1580,9 @@ class Window(Adw.ApplicationWindow):
         """Byte goes and sits beside this entry's row (after the list is rebuilt)."""
         i = self._index(entry)
         if self.cat_on and i is not None and i < len(self.rows):
-            GLib.idle_add(lambda: self.cat.visit(self.rows[i]) and False)
+            # wait until GTK has laid the rebuilt list out (an idle callback comes too early after a
+            # drag, so the row would be measured where it isn't yet)
+            GLib.timeout_add(250, lambda: (i < len(self.rows) and self.cat.visit(self.rows[i])) and False)
 
     def _toast(self, msg):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(msg), timeout=3))

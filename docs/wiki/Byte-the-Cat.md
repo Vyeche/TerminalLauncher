@@ -3,7 +3,7 @@
 Byte is a small ginger cat that lives in the launcher's window. You never have to feed it, play
 with it or look after it: it's just there, and it does little things.
 
-![Byte at the bottom of the window: it blinks, gets a click (winks and says the word of the day), then hops when a star earns "New badge: First star!"](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/cat.gif)
+![Byte walks along the bottom of the window, climbs into the right margin, gets a click (winks and says the word of the day), says "Back in a bit." and walks out of the right edge, then comes back in from the left](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/cat.gif)
 
 ## Where it goes
 Byte floats over the window and moves around on its own, every half a minute or so:

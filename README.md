@@ -7,11 +7,11 @@ log in**.
 
 <p align="center"><img src="assets/terminal-launcher.svg" width="96" alt="Terminal Launcher icon"></p>
 
-![The Terminal Launcher window: two starred terminals under "★ Favorites" at the top, six more under "Terminals", each with a drag handle, a tick box, a ☆, a ⋮ menu and a ▶ button; at the bottom, Byte the cat says good morning next to the badge count](docs/images/window.png)
+![Terminal Launcher with two starred terminals under "★ Favorites" at the top and six more under "Terminals", each with a drag handle, a tick box, a ☆, a ⋮ menu and a ▶ button; Byte the cat sits in the right margin with a speech bubble saying good morning](docs/images/window.png)
 
-**[Watch the 48-second tour on YouTube](https://youtube.com/shorts/3tdUWFhMW3Y)** (sound on):
-favorites, Byte the cat and its badges, ticking and opening, adding an entry and dragging rows, on
-a made-up list. The sounds and the music are the launcher's own.
+**[Watch the 50-second tour on YouTube](https://youtube.com/shorts/ncVhvALaJoo)** (sound on):
+Byte the cat roaming the window, favorites, badges, ticking and opening, adding an entry and
+dragging rows, on a made-up list. The sounds and the music are the launcher's own.
 
 **More:** the [wiki](https://github.com/Vyeche/TerminalLauncher/wiki) has a page for each part
 ([Getting started](https://github.com/Vyeche/TerminalLauncher/wiki/Getting-Started),
@@ -68,7 +68,7 @@ Shortcuts: `Ctrl+N` add, `Ctrl+O` folder, `Ctrl+Enter` open, `Ctrl+Shift+Enter` 
 down unstars it. **Open favorites** in the **▾** menu next to the top button (`Ctrl+Shift+Enter`)
 opens all of them the way **Open in** says.
 
-![Clicking ☆ on a row: the star pops, the row glows gold and moves up into ★ Favorites; then another row is dragged up into Favorites and becomes a favorite too](docs/images/gifs/favorites.gif)
+![Clicking ☆ on a row: the star pops, the row glows gold and moves up into ★ Favorites, and Byte walks over to sit beside it; then another row is dragged up into Favorites](docs/images/gifs/favorites.gif)
 
 ### Sounds, animations and tips
 Small things that make it nicer to use and teach it as you go, all quiet and easy to turn off:
@@ -110,7 +110,7 @@ you company:
   Earning one plays a small sparkle and the cat cheers. **☰ → Badges…** shows what you've found and
   hints at the rest (the cat's tooltip shows the count).
 
-![Byte the cat at the bottom of the window: it blinks, gets a click (winks and says the word of the day), then hops when a star earns "New badge: First star!"](docs/images/gifs/cat.gif)
+![Byte walks along the bottom of the window, climbs into the right margin, gets a click (winks and says the word of the day), says "Back in a bit." and walks out of the right edge, then comes back in from the left](docs/images/gifs/cat.gif)
 
 ![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](docs/images/badges.png)
 
@@ -120,7 +120,7 @@ are built in. No weather, for that reason.
 
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)
 
-![Dragging a row by its handle to a new place in the list: the row fades, a blue line shows where it will land, the ticked rows stay ticked, and Byte says "Tidy!"](docs/images/gifs/drag.gif)
+![Dragging a row by its handle to a new place: the row fades, a blue line shows where it will land, the ticked rows stay ticked, and Byte says "Tidy!" and walks over to it](docs/images/gifs/drag.gif)
 
 <details><summary>The dark theme and the Edit dialog</summary>
 

@@ -2,7 +2,7 @@
 
 From an empty list to your day's terminals opening with one click.
 
-![The Terminal Launcher window with a list of terminals: each row has a drag handle, a tick box, its name and folder, a ⋮ menu and a ▶ button](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/window.png)
+![Terminal Launcher with two starred terminals under "★ Favorites" at the top and six more under "Terminals", each with a drag handle, a tick box, a ☆, a ⋮ menu and a ▶ button; Byte the cat sits in the right margin with a speech bubble saying good morning](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/window.png)
 
 ## 1. Install
 You need Python 3 with GTK 4 and libadwaita 1.4+, and a terminal (kitty, GNOME Terminal or COSMIC
@@ -69,7 +69,7 @@ Drag a row by its handle (the dotted grip at its left edge) and drop it on anoth
 place. A line in your accent color shows where it will land, and while you drag near the top or
 bottom edge the list scrolls. The new order is saved at once, and your ticks stay as they were.
 
-![Dragging a row by its handle: a line shows where it will land, and the row moves there when dropped](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/drag.gif)
+![Dragging a row by its handle to a new place: the row fades, a blue line shows where it will land, the ticked rows stay ticked, and Byte says "Tidy!" and walks over to it](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/drag.gif)
 
 You can grab a row anywhere, not only by the handle. The handle shows once the list has two or more
 rows. **⋮ → Move up / Move down** also moves a row one step.
@@ -79,7 +79,7 @@ rows. **⋮ → Move up / Move down** also moves a row one step.
 star turns gold with a little pop, and the row glows for a moment. **☆** again (or **⋮ → Remove from
 favorites**) puts it back at the top of **Terminals**.
 
-![Clicking ☆ on a row: the star pops, the row glows gold and moves up into ★ Favorites; then another row is dragged up into Favorites](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/favorites.gif)
+![Clicking ☆ on a row: the star pops, the row glows gold and moves up into ★ Favorites, and Byte walks over to sit beside it; then another row is dragged up into Favorites](https://raw.githubusercontent.com/Vyeche/TerminalLauncher/main/docs/images/gifs/favorites.gif)
 
 You can also drag a row into Favorites to star it, or drag a favorite down among the rest to
 unstar it. **Open favorites** in the **▾** menu next to the top button (**Ctrl+Shift+Enter**) opens
