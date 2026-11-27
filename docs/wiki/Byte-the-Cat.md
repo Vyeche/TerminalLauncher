@@ -11,15 +11,33 @@ Byte floats over the window and moves around on its own, every half a minute or 
 - **beside the list**: up in the empty margins when the window is wide enough;
 - **next to a row** you just starred, opened or dragged, for a few seconds;
 - **peeking in** from the left or right edge, half outside the window;
-- **outside**: it walks off one edge ("Going out for a stretch.") and comes back 20 to 60 seconds
-  later from the other one ("Back! I saw a bird."). If it has something to tell you meanwhile, it
+- **beside the window**: out in the see-through border on the left or right (see below);
+- **outside**: without the see-through border, it walks off one edge ("Going out for a stretch.")
+  and comes back 20 to 60 seconds later from the other one ("Back! I saw a bird."). If it has something to tell you meanwhile, it
   comes straight back.
 
 It walks along the floor and climbs straight up the margins and edges, so it never walks across your
 list. Only the cat itself catches clicks: the space around it and its speech bubble let them
 through. Rest the pointer on it for a second and it walks out of the way; while you drag a row it
-lets the drop through. On a Wayland desktop an app can't put its own windows anywhere on the screen,
-which is why Byte stays inside the launcher's window (and peeks over its edges).
+lets the drop through.
+
+### Outside the window
+On a Wayland desktop an app can't put a little window of its own anywhere on the screen, so the
+launcher makes room instead: its window is a bit wider than what you see, with a **see-through
+border** on the left and right (about the cat's width), and Byte can walk out there and sit beside
+the app. Clicks on the empty border go through to whatever is behind it; only the app, the cat (and
+its bubble while it asks something) take them. **☰ → Byte can leave the window** turns the border
+off, and it goes away by itself when the window is maximized or full screen, or when the cat is
+hidden. An open window keeps its size when you flip the switch (the app just gets wider or narrower);
+the next time it opens, it makes the room itself. Out there Byte sits and walks along the bottom; it
+doesn't walk off past the border (the window's real edge is invisible, so it would look cut off).
+
+A few things come with it, because the desktop still sees one bigger window:
+- the desktop's focus outline and window snapping use the whole window, border included;
+- resizing by dragging a side edge may not work, since the see-through sides let clicks through;
+  turn the switch off for a moment, or use the desktop's own way of resizing;
+- with tiling turned on, the border shows as an empty strip inside the tile. Turn the switch off
+  if you'd rather not have it.
 
 ## What it does
 - **Moves on its own:** it blinks every few seconds, and now and then winks, swishes its tail, twitches
@@ -30,7 +48,22 @@ which is why Byte stays inside the launcher's window (and peeks over its edges).
   - a **joke of the day**: short and silly, and the same one all day;
   - a **"did you know"**: a shell or launcher tip you can try right away, like `cd -` or Ctrl+R;
   - the greeting again.
-- **Click it** for the next line straight away. It winks and says *mrrp?*.
+- **Poke it** (click): it wobbles on its feet, meows and asks "What can I do for you?" with buttons
+  **A tip**, **A joke** and **My badges**; its answer types out with a little cat chatter. Poke it
+  three times in a row and it purrs, with heart eyes. **×** closes the question.
+- **Pick it up and move it:** drag Byte with the mouse ("Wheee!"; it dangles with wide eyes). Let
+  go in the empty space beside the list and it sits there; at the window's edge it hangs and peeks;
+  out in the see-through border it drops to the bottom and sits beside the app; over the list or in mid-air it drops quickly to the floor. Then it stays put for about 40 seconds
+  before wandering again. A plain click is still a poke.
+- **Offers help** with buttons at the moment it's useful, the way the old desk helpers did: tick two
+  rows and it asks "Open them together?" (**Open them**); open the same terminal with ▶ three times
+  and it asks "Make it a favorite?" (**Star it**); with an empty list it offers to open **Add**. Each
+  offer has **Not now** (not again until you reopen the launcher) and **Don't ask again** (for good;
+  **☰ → Show tips again** brings them back). **☰ → Tips** turns offers off too.
+- **Its face shows how it feels:** big shiny eyes that turn happy (^ ^), wide, sleepy (the hour
+  before its nap), hearts (when petted) or sparkles (a badge); rosy cheeks; ears that perk up or droop;
+  a curly tail that wags; squash and stretch when it hops. While it asks something, it sits still and
+  keeps quiet until you answer or close it.
 - **Reacts** to what you do: a hop and a blush when a terminal becomes a favorite, a wave when
   something opens, a nod when a dragged row lands, an ear twitch when you unstar one. The one-time
   tips come from the cat too (they start with *Psst*).
@@ -90,7 +123,8 @@ Opening only counts for real opens, not with `--dry-run`. Badges and their count
 `settings.json` ([Files and settings](Files-and-Settings#settingsjson)).
 
 ## Turning it off
-**☰ → Byte the cat** hides it, and its timers stop. Sounds have their own switch (**☰ → Sounds**),
+**☰ → Byte the cat** hides it, and its timers stop. **☰ → Byte can leave the window** keeps it
+inside (no see-through border). Sounds have their own switch (**☰ → Sounds**),
 and the cat follows your desktop's animation setting: with animations off it sits still and only
 talks.
 

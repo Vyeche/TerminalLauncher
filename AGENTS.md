@@ -54,10 +54,17 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
 - **Sounds, animations and tips stay subtle.** Sounds are made in code (`SOUNDS`, peak `SOUND_PEAK`),
   short and quiet, never with `--dry-run`, and off with ☰ → Sounds or the desktop's event-sounds
   switch. Animations are CSS in `APP_CSS` and skipped when the desktop turns animations off. A tip
-  shows once (`tips_seen`), at the moment it's useful, and fits on one line.
+  shows once (`tips_seen`), at the moment it's useful. Offers (`_offer`) ask with buttons and always
+  have Not now (this session) and Don't ask again (`tips_seen`); off with ☰ → Tips. Byte's voice
+  (`SOUND_MAKERS`: meow, chirp, purr, babble) plays only when you poke it, never on its own.
 - **Byte roams** on a `Gtk.Overlay` under the toasts (`cat_spot`, `cat_route`, `cat_step`): it walks
   the floor and climbs margins and edges, never across the list; only the cat takes clicks (the bubble
-  doesn't), it lets drags through, and a reaction brings it back from outside so nothing is missed.
+  only while it shows buttons, and then the cat stays put and quiet), it lets drags through, and a reaction brings it back from outside so nothing is missed.
+- **Byte outside the window** (`_apply_outside`, `_update_input_region`, `Cat.inset`, spot "beside"):
+  the app is a `tl-card` with a see-through border of `Cat.SIZE + 16` px on each side (☰ → Byte can
+  leave the window, setting `outside`); the window's input region is the card plus the cat (plus the
+  bubble while it asks), so the empty border lets clicks through. No border when maximized, full
+  screen or with the cat hidden. Don't detect tiling: COSMIC reports floating windows as tiled.
 - **Byte the cat** (`Cat`, `draw_cat`, `CAT_*`, `BADGES`): never needs looking after, never goes
   online (so no weather), and stays quiet: one voice per moment (the cat says tips and badges; toasts
   are for errors and buttons), at most one extra sound per action (a badge's sparkle beats a tip's

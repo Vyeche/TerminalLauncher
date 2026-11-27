@@ -137,7 +137,7 @@ assert P(win("Docs site", True, "/srv/docs"))[1]["tab"] == "Docs site"
 EOF
 
 echo "Byte roaming (where it can go, how it walks)"
-python3 - "$APP" <<'EOF' && ok "walks at its speed and arrives; floor, margins only when there's room, peeks, outside" || bad "roaming"
+python3 - "$APP" <<'EOF' && ok "walks at its speed and arrives; floor, margins only when there's room, peeks, beside the app, outside" || bad "roaming"
 import importlib.util, random, sys
 spec = importlib.util.spec_from_file_location("tl", sys.argv[1]); tl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tl)
@@ -158,6 +158,23 @@ px, _ = tl.cat_spot("peek", W, H, S, r, side="right"); assert W - S < px < W, px
 assert tl.cat_spot("outside", W, H, S, r, side="right")[0] > W and tl.cat_spot("outside", W, H, S, r, side="left")[0] < -S
 assert all(tl.cat_spot("floor", W, H, S, r, side="right")[0] >= W / 2 for _ in range(50)), "scoot right stays right"
 assert all(tl.cat_spot("floor", W, H, S, r, side="left")[0] <= W / 2 - S for _ in range(50)), "scoot left clears the middle"
+# With a see-through border (inset) around the app: the floor and peeks keep to the app, "beside" is out
+# in the border, and margins are measured from the app's edge
+G = S + 16
+assert all(G + 8 <= tl.cat_spot("floor", W, H, S, r, inset=G)[0] <= W - G - S - 8 for _ in range(50)), "floor left the app"
+bx, by = tl.cat_spot("beside", W, H, S, r, side="left", inset=G); assert 0 <= bx and bx + S <= G and by == H - S - 6, bx
+bx, _ = tl.cat_spot("beside", W, H, S, r, side="right", inset=G); assert W - G <= bx and bx + S <= W, bx
+assert tl.cat_spot("beside", W, H, S, r, side="left", inset=0) is None, "no border, nowhere beside"
+px, _ = tl.cat_spot("peek", W, H, S, r, side="left", inset=G); assert G - S < px < G, px
+px, _ = tl.cat_spot("peek", W, H, S, r, side="right", inset=G); assert W - G - S < px < W - G, px
+assert tl.cat_spot("margin", W, H, S, r, (G + 100, 200, 400, 500), "left", inset=G)[0] == G + (100 - S) / 2
+assert tl.cat_spot("margin", W, H, S, r, (100, 200, 560, 500), "left", inset=G) is None, "the border isn't margin"
+# What takes clicks with the border: the card, the cat (whole pixels, covering it) and the bubble only when given
+rs = tl.click_rects((G, 0, 800, 680), (0, 0), (0, 0), (8.6, 578.2), S, None)
+assert rs == [(G, 0, 800, 680), (8, 578, S + 1, S + 1)], rs
+rs = tl.click_rects((G, 0, 800, 680), (0, 0), (5, 7), (900, 578), S, (700, 600, 200, 60))
+assert rs == [(G + 5, 7, 800, 680), (905, 585, S, S), (705, 607, 200, 60)], rs
+assert len(tl.click_rects((G, 0, 800, 680), (0, 0), (0, 0), None, S, None)) == 1, "a hidden cat takes no clicks"
 EOF
 
 echo "Login entry (save_sessions keeps the autostart file in step)"
@@ -211,7 +228,7 @@ def act(app):
         from gi.repository import Gtk
         css = Gtk.CssProvider(); errors = []
         css.connect("parsing-error", lambda _p, _s, e: errors.append(e.message))
-        css.load_from_string(tl.APP_CSS)
+        css.load_from_string(tl.app_css())
         assert not errors, f"CSS: {errors}"
         w = tl.Window(app)            # built, never shown
         from datetime import datetime as DT
@@ -223,7 +240,7 @@ def act(app):
         def heard(name):                                 # players run in the background: give them 2 s
             import time
             for _ in range(40):                          # run GTK's loop meanwhile: the tip chime waits on it
-                if f"{name}-v1.wav" in played(): return True
+                if f"{name}-v{tl.SOUND_VERSION}.wav" in played(): return True
                 GLib.MainContext.default().iteration(False); time.sleep(0.05)
             return False
         def spin(seconds=0.3):                           # let GTK run what it has queued (idle work, timers)
@@ -300,6 +317,16 @@ def act(app):
         for _ in range(3):
             w._launch(last)
         assert w.sessions[last].get("opens") == 3, w.sessions[last]
+        def choose(label):                               # press one of the cat's buttons
+            b = w.cat.choices.get_first_child()
+            while b and b.get_label() != label:
+                b = b.get_next_sibling()
+            assert b, (label, w.cat.text)
+            b.emit("clicked")
+        assert w.cat.asking and "a favorite" in w.cat.text, w.cat.text      # the offer, with buttons
+        assert w.cat.bubble.get_can_target(), "a question's buttons can't be clicked"
+        choose("Don't ask again")
+        assert not w.cat.asking and not w.cat.bubble.get_can_target()
         assert "suggest-star" in tl.load_settings()["tips_seen"]
         assert heard("open"), "no open sound"
         assert not {"early-bird", "night-owl"} & set(w._badges()), w._badges()
@@ -309,7 +336,11 @@ def act(app):
         w.cat.now = lambda: DT(2026, 11, 25, 12, 0)
         assert heard("badge"); spin(0.6)                 # the badge's sparkle plays; a separate action follows
         w.ticks[1].set_active(True); w.ticks[2].set_active(True)
-        assert "tick" in tl.load_settings()["tips_seen"], "no tip for ticking two"
+        assert w.cat.asking and "Open them together" in w.cat.text, "no offer for ticking two"
+        choose("Not now")
+        assert "tick" in w._declined and "tick" not in tl.load_settings().get("tips_seen", [])
+        w.ticks[1].set_active(False); w.ticks[1].set_active(True)
+        assert not w.cat.asking, "asked again after Not now"
         import time
         assert heard("tip"), "no tip chime"
         ctx = GLib.MainContext.default()                 # let the delayed tip chime (450 ms) play first
@@ -326,11 +357,12 @@ def act(app):
         assert tl.load_settings()["sounds"] is False
 
         # The sounds themselves: short, valid and quiet
-        for name in tl.SOUNDS:
+        for name in list(tl.SOUNDS) + list(tl.SOUND_MAKERS):
             with wave.open(str(tl.sound_file(name))) as f:
                 assert f.getnchannels() == 1 and f.getframerate() == 44100
                 frames = f.readframes(f.getnframes())
-                assert f.getnframes() / 44100 < 0.6, name
+                cap = {"purr": 2.2, "babble": 1.6, "meow": 1.1, "chirp": 0.6}.get(name, 0.7)   # the cat talks longer
+                assert f.getnframes() / 44100 < cap, name
             peak = max(abs(x) for x in array.array("h", frames)) / 32767
             assert 0.05 < peak <= tl.SOUND_PEAK + 0.001, (name, peak)
 
@@ -343,7 +375,15 @@ def act(app):
         for kw in ({}, {"blink_l": 1, "blink_r": 1}, {"hop": 1, "blush": True, "mouth": "smile"},
                    {"paw": 1}, {"mouth": "o", "ear": 1}, {"tail": -1, "look": 1}, {"sleep": True}):
             tl.draw_cat(cairo.Context(surf), 64, tl.cat_pose(**kw))
-        for _ in range(10):
+        w.lookup_action("sounds").change_state(GLib.Variant("b", True))   # turned off further up
+        w._pet()                                         # a poke: wobble, meow, and "What can I do?"
+        assert w.cat.asking and "What can I do for you?" in w.cat.text, w.cat.text
+        choose("A joke")
+        assert not w.cat.asking and w.cat.text in tl.CAT_JOKES and heard("babble"), w.cat.text
+        assert heard("meow"), "no meow"
+        w._pet(); w._pet()                               # three pokes in a row: it purrs
+        assert heard("purr") and "rrr" in w.cat.text and not w.cat.asking, w.cat.text
+        for _ in range(7):
             w._pet()
         assert "curious" in w._badges() and tl.load_settings()["stats"]["pets"] == 10
         assert f"🏅 {len(w._badges())}/{len(tl.BADGES)} badges" in w.cat.tip_base, w.cat.tip_base
@@ -354,16 +394,58 @@ def act(app):
         assert w.cat.spot == "away" and w.cat.away_until > time.monotonic(), w.cat.spot
         w.cat.react("hop", "hello")
         assert w.cat.spot == "floor" and w.cat.label.get_label() == "hello", (w.cat.spot, w.cat.label.get_label())
-        assert w.cat.x < 0, "left by the right edge, so it comes back from the left"
+        assert w.cat.x < w.cat.inset, "left by the right edge, so it comes back from the left (the border's, if any)"
         w.cat.visit(w.rows[0])
         assert w.cat.spot == "row", w.cat.spot
         w.cat.on_scroll(); assert w.cat.spot == "floor", "a scroll left it beside a row"
         w.cat.passthrough(True); assert not w.cat.area.get_can_target()
         w.cat.passthrough(False); assert w.cat.area.get_can_target()
+        # Carrying it: picked up it stops, held it follows, let go it sits, peeks or drops to the floor
+        size, box, inset = w.cat.size, w.cat.list_box, w.cat.inset
+        w.cat.size, w.cat.list_box, w.cat.inset = (lambda: (800, 680)), (lambda: (120, 200, 560, 300)), 0
+        floor = 680 - w.cat.SIZE - 6
+        w.cat.pick_up(); assert w.cat.held and w.cat.spot == "held" and not w.cat.target
+        w.cat.drag_to(10, 250); w.cat.drop()                  # left margin: it sits there
+        assert w.cat.spot == "margin" and (w.cat.x, w.cat.y) == (10, 250) and not w.cat.target, w.cat.spot
+        w.cat.pick_up(); w.cat.drag_to(-50, 300); w.cat.drop()  # over the edge: it hangs and peeks
+        assert w.cat.spot == "peek" and w.cat.x < 0, (w.cat.spot, w.cat.x)
+        w.cat.pick_up(); w.cat.drag_to(350, 250); w.cat.drop()  # over the list: down to the floor, fast
+        assert w.cat.spot == "floor" and w.cat.target == (350, floor) and w.cat.speed > tl.CAT_SPEED
+        w.cat.drag_to(-9999, -9999); assert w.cat.x >= -w.cat.SIZE * 0.6 and w.cat.y >= -w.cat.SIZE * 0.2, "lost off the window"
+        w.cat.drop()
+        # ... and with the see-through border: let go out there, it drops to the floor beside the app
+        g = w.cat.SIZE + 16
+        w.cat.size, w.cat.list_box, w.cat.inset = (lambda: (800 + 2 * g, 680)), (lambda: (g + 120, 200, 560, 300)), g
+        w.cat.pick_up(); w.cat.drag_to(8, 250); w.cat.drop()
+        assert w.cat.spot == "beside" and w.cat.target == (8, floor), (w.cat.spot, w.cat.target)
+        w.cat.x, w.cat.y, w.cat.target = 8, floor, None; assert w.cat.in_border()
+        w.cat.pick_up(); w.cat.drag_to(g - 30, 300); w.cat.drop()     # over the app's edge: it peeks there
+        assert w.cat.spot == "peek", w.cat.spot
+        w.cat.pick_up(); w.cat.drag_to(g + 10, 250); w.cat.drop()     # in the app's left margin: it sits
+        assert w.cat.spot == "margin", w.cat.spot
+        w.cat.pick_up(); w.cat.drag_to(-9999, 300); assert w.cat.x == 0, "cut off at the invisible edge"
+        w.cat.drag_to(9999, 300); assert w.cat.x == 800 + 2 * g - w.cat.SIZE; w.cat.drop()
+        kinds = set()
+        for _ in range(200):                      # with a border it never walks off the invisible edge
+            w.cat.wander(); kinds.add(w.cat.spot)
+        assert "away" not in kinds and "beside" in kinds, kinds
+        w.cat.spot = "away"; w.cat.come_back("left")
+        assert 0 <= w.cat.x <= g - w.cat.SIZE, ("came back from mid-air", w.cat.x)
+        w.cat.size, w.cat.list_box, w.cat.inset = size, box, inset
+        w.cat.stop()
         w.cat.stop()
         w.cat.start(); assert w.cat.timers, "the cat's timer didn't start"
+        # The see-through border: on by default (with the cat), off with its switch or when the cat hides
+        g = tl.Cat.SIZE + 16
+        assert w._gutter == g == w.cat.inset and w.card.get_margin_start() == g and w.has_css_class("tl-outside")
+        assert w.get_default_size()[0] == 800 + 2 * g, w.get_default_size()
+        w.lookup_action("outside").change_state(GLib.Variant("b", False))
+        assert w._gutter == 0 == w.cat.inset and w.card.get_margin_end() == 0 and not w.has_css_class("tl-outside")
+        assert tl.load_settings()["outside"] is False
+        w.lookup_action("outside").change_state(GLib.Variant("b", True)); assert w._gutter == g
         w.lookup_action("cat").change_state(GLib.Variant("b", False))
         assert not w.cat.get_visible() and not w.cat.timers, "hiding the cat left it running"
+        assert w._gutter == 0, "no cat, no border"
         w._tip("drag-star", "x"); w._set_star(w.sessions[-1])   # with the cat hidden: toasts, no errors
         assert tl.load_settings()["cat"] is False
         w._show_badges()
