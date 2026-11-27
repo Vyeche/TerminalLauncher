@@ -62,9 +62,11 @@ the login entry `~/.config/autostart/net.vyechi.TerminalLauncher.desktop`, and t
   only while it shows buttons, and then the cat stays put and quiet), it lets drags through, and a reaction brings it back from outside so nothing is missed.
 - **Byte outside the window** (`_apply_outside`, `_update_input_region`, `Cat.inset`, spot "beside"):
   the app is a `tl-card` with a see-through border of `Cat.SIZE + 16` px on each side (☰ → Byte can
-  leave the window, setting `outside`); the window's input region is the card plus the cat (plus the
+  leave the window, setting `outside`, **off by default**: COSMIC's focus outline wraps the whole
+  window, and reporting the border as shadow hides Byte, since COSMIC clips to the geometry); the window's input region is the card plus the cat (plus the
   bubble while it asks), so the empty border lets clicks through. No border when maximized, full
   screen or with the cat hidden. Don't detect tiling: COSMIC reports floating windows as tiled.
+  Clear backgrounds only on `window > dialog-host`, never `window > *` (tooltips hang off the window).
 - **Byte the cat** (`Cat`, `draw_cat`, `CAT_*`, `BADGES`): never needs looking after, never goes
   online (so no weather), and stays quiet: one voice per moment (the cat says tips and badges; toasts
   are for errors and buttons), at most one extra sound per action (a badge's sparkle beats a tip's

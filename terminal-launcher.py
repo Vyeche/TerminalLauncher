@@ -1051,7 +1051,7 @@ row.glow { animation: tl-glow 1300ms ease-out; }
                     100% { transform: scale(1); } }
 .cat-bubble.pop { animation: tl-pop 320ms ease-out; }
 .cat-bubble button { min-height: 26px; padding: 2px 10px; font-style: normal; }
-window.tl-outside, window.tl-outside > *, window.tl-outside .tl-stage { background: transparent; box-shadow: none; }
+window.tl-outside, window.tl-outside > dialog-host, window.tl-outside .tl-stage { background: transparent; box-shadow: none; }
 window.tl-outside .tl-card { background-color: @window_bg_color; border-radius: 12px;
                              box-shadow: 0 2px 10px alpha(black, 0.35), 0 0 0 1px alpha(black, 0.08); }
 """
@@ -1829,7 +1829,8 @@ class Window(Adw.ApplicationWindow):
         self.tips_on = settings.get("tips", True) is not False
         self.cat_on = settings.get("cat", True) is not False and HAVE_CAIRO
         self.watch_on = settings.get("watch", True) is not False
-        self.outside_on = settings.get("outside", True) is not False
+        self.outside_on = settings.get("outside", False) is True   # off unless turned on: the desktop
+        # draws its focus outline around the whole window, see-through border included
         self._gutter = 0             # the see-through border Byte can step out into (0 = none)
         self._region_set = False     # we gave the window its own input region
         self._region_rects = None    # ... made of these

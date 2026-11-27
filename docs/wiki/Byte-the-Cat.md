@@ -11,7 +11,8 @@ Byte floats over the window and moves around on its own, every half a minute or 
 - **beside the list**: up in the empty margins when the window is wide enough;
 - **next to a row** you just starred, opened or dragged, for a few seconds;
 - **peeking in** from the left or right edge, half outside the window;
-- **beside the window**: out in the see-through border on the left or right (see below);
+- **beside the window**: out in the see-through border on the left or right, if you turn it on
+  (see below);
 - **outside**: without the see-through border, it walks off one edge ("Going out for a stretch.")
   and comes back 20 to 60 seconds later from the other one ("Back! I saw a bird."). If it has something to tell you meanwhile, it
   comes straight back.
@@ -23,17 +24,18 @@ lets the drop through.
 
 ### Outside the window
 On a Wayland desktop an app can't put a little window of its own anywhere on the screen, so the
-launcher makes room instead: its window is a bit wider than what you see, with a **see-through
+launcher can make room instead (**☰ → Byte can leave the window**, off by default): its window is a bit wider than what you see, with a **see-through
 border** on the left and right (about the cat's width), and Byte can walk out there and sit beside
 the app. Clicks on the empty border go through to whatever is behind it; only the app, the cat (and
-its bubble while it asks something) take them. **☰ → Byte can leave the window** turns the border
-off, and it goes away by itself when the window is maximized or full screen, or when the cat is
+its bubble while it asks something) take them. The border goes away by itself when the window is maximized or full screen, or when the cat is
 hidden. An open window keeps its size when you flip the switch (the app just gets wider or narrower);
 the next time it opens, it makes the room itself. Out there Byte sits and walks along the bottom; it
 doesn't walk off past the border (the window's real edge is invisible, so it would look cut off).
 
 A few things come with it, because the desktop still sees one bigger window:
-- the desktop's focus outline and window snapping use the whole window, border included;
+- the desktop's focus outline and window snapping use the whole window, border included, so the
+  border shows as a frame around empty space (that's why it's off by default). On COSMIC the outline
+  can't be moved in: COSMIC shows only what's inside it, so Byte would vanish out there;
 - resizing by dragging a side edge may not work, since the see-through sides let clicks through;
   turn the switch off for a moment, or use the desktop's own way of resizing;
 - with tiling turned on, the border shows as an empty strip inside the tile. Turn the switch off
@@ -123,8 +125,8 @@ Opening only counts for real opens, not with `--dry-run`. Badges and their count
 `settings.json` ([Files and settings](Files-and-Settings#settingsjson)).
 
 ## Turning it off
-**☰ → Byte the cat** hides it, and its timers stop. **☰ → Byte can leave the window** keeps it
-inside (no see-through border). Sounds have their own switch (**☰ → Sounds**),
+**☰ → Byte the cat** hides it, and its timers stop. **☰ → Byte can leave the window** (off by default)
+lets it sit outside the app. Sounds have their own switch (**☰ → Sounds**),
 and the cat follows your desktop's animation setting: with animations off it sits still and only
 talks.
 

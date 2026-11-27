@@ -435,10 +435,11 @@ def act(app):
         w.cat.stop()
         w.cat.stop()
         w.cat.start(); assert w.cat.timers, "the cat's timer didn't start"
-        # The see-through border: on by default (with the cat), off with its switch or when the cat hides
+        # The see-through border: off by default, on with its switch, off again when the cat hides
         g = tl.Cat.SIZE + 16
+        assert w._gutter == 0 == w.cat.inset and not w.has_css_class("tl-outside"), "the border is on by default"
+        w.lookup_action("outside").change_state(GLib.Variant("b", True))
         assert w._gutter == g == w.cat.inset and w.card.get_margin_start() == g and w.has_css_class("tl-outside")
-        assert w.get_default_size()[0] == 800 + 2 * g, w.get_default_size()
         w.lookup_action("outside").change_state(GLib.Variant("b", False))
         assert w._gutter == 0 == w.cat.inset and w.card.get_margin_end() == 0 and not w.has_css_class("tl-outside")
         assert tl.load_settings()["outside"] is False
@@ -448,6 +449,7 @@ def act(app):
         assert w._gutter == 0, "no cat, no border"
         w._tip("drag-star", "x"); w._set_star(w.sessions[-1])   # with the cat hidden: toasts, no errors
         assert tl.load_settings()["cat"] is False
+        assert "window.tl-outside > *" not in tl.APP_CSS, "that also clears tooltips (they hang off the window): white text"
         w._show_badges()
         # Watching kitty: snapshots handed to the window make Byte comment (and play done/oops)
         w.lookup_action("cat").change_state(GLib.Variant("b", True)); w.cat.stop()
