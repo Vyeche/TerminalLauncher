@@ -90,7 +90,7 @@ It's written whenever you change **Open in**. The other keys:
 | `tips_seen` | the tips already shown, so each shows once. **☰ → Show tips again** empties it |
 | `cat` | **☰ → Byte the cat**; missing means shown |
 | `watch` | **☰ → Byte watches my kitty tabs**; missing means on |
-| `outside` | **☰ → Byte can leave the window** (the see-through border); missing means on |
+| `outside` | **☰ → Byte can leave the window** (the see-through border); missing means off |
 | `badges` | the badges you've found, with the date of each |
 | `stats` | the counters behind the badges: `opened` (terminals opened), `pets` (clicks on the cat), `modes` (the **Open in** choices you've used) |
 

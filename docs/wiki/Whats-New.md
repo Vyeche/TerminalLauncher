@@ -4,9 +4,10 @@ Changes you'd notice, newest first. To get them: `git pull` in your clone, then 
 launcher (see [Installing](Installing#updating)).
 
 ## 2026-11-27
-- **Byte steps outside the window:** the launcher now has a see-through border on each side, and
-  Byte walks out there and sits beside the app; you can carry it out too. Clicks on the empty border
-  go to what's behind. **☰ → Byte can leave the window** turns it off. See
+- **Byte can step outside the window:** turn on **☰ → Byte can leave the window** (off by default)
+  and the launcher gets a see-through border on each side, where Byte sits beside the app; you can
+  carry it out too. Clicks on the empty border go to what's behind. Also fixed: Byte's tooltip
+  showed white text with no background. See
   [Outside the window](Byte-the-Cat#outside-the-window).
 - **A cuter Byte:** a new face with big shiny eyes that show how it feels (happy, surprised, sleepy,
   heart eyes when petted, sparkles for a badge), rosy cheeks, perky ears, a curly wagging tail, and

@@ -96,10 +96,10 @@ you company:
   **goes outside** for a while ("Going out for a stretch.") and comes back from the other side. It
   walks along the floor and climbs the edges, so it never walks across your list. Rest the pointer on
   it and it makes room; while you drag a row it lets the drop through.
-- It **steps outside the window**: the launcher has a see-through border on each side, and Byte sits
-  out there beside the app now and then (instead of walking off the edge). Clicks on the empty border
-  go to whatever is behind it.
-  **☰ → Byte can leave the window** turns the border off; maximized or full screen there's none.
+- It can **step outside the window**: turn on **☰ → Byte can leave the window** and the launcher gets
+  a see-through border on each side, where Byte sits beside the app now and then (instead of walking
+  off the edge). Clicks on the empty border go to whatever is behind it. It's off by default because
+  the desktop draws its focus outline around the whole window, border included.
 - It has a face that shows how it feels: big shiny eyes that turn into happy ^ ^, go wide when it's
   surprised, get sleepy at bedtime, become hearts when you pet it and sparkle when you earn a badge;
   rosy cheeks; ears that perk up and droop; a curly tail that wags; and it squashes and stretches when
@@ -131,7 +131,7 @@ you company:
 ![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](docs/images/badges.png)
 
 **☰ → Byte the cat** hides it (its timers stop too), **☰ → Byte watches my kitty tabs** turns
-the watching off, and **☰ → Byte can leave the window** keeps it inside. It never goes online; the words, jokes and tips
+the watching off, and **☰ → Byte can leave the window** lets it sit outside the app. It never goes online; the words, jokes and tips
 are built in. No weather, for that reason.
 
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)
