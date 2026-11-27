@@ -73,14 +73,17 @@ opens all of them the way **Open in** says.
 ### Sounds, animations and tips
 Small things that make it nicer to use and teach it as you go, all quiet and easy to turn off:
 - **Sounds**: a soft two-note chime for a star (and a lower one when you take it away), a light
-  pluck when something opens, a tock when a dragged row lands. They're made by the launcher itself
-  (no sound files, nothing to install) and play with `pw-play`, `paplay` or `aplay`. Hear them all:
+  pluck when something opens, a tock when a dragged row lands, and Byte's own little voice: a meow,
+  a "mrrp?", a purr and some chatter. They're made by the launcher itself (no sound files, nothing to
+  install), soft and warm, and play with `pw-play`, `paplay` or `aplay`. Hear them all:
   `python3 terminal-launcher.py --sounds`.
 - **Animations**: a new favorite's star pops and its row glows gold for a moment; ▶ gives a little
   press. They follow your desktop's animation setting.
-- **Tips**: one short tip at the moment it's useful, each shown once: your first favorite, the first
-  time you tick two rows, the first drag into Favorites, and, the third time you open the same
-  terminal with ▶, a nudge to star it (with a **Star it** button).
+- **Tips and offers**: one short tip at the moment it's useful, each shown once (your first favorite,
+  the first drag into Favorites), and offers with buttons, the way the old desk helpers did it: tick
+  two rows and Byte asks "Open them together?" **[Open them]**; open the same terminal three times and
+  it asks "Make it a favorite?" **[Star it]**; with an empty list it offers to open **Add**. Every
+  offer has **Not now** (not again this session) and **Don't ask again**.
 
 **☰** at the top right turns **Sounds** and **Tips** on or off, and **Show tips again** brings the
 tips back. Sounds also stay off when your desktop's own event sounds are off.
@@ -93,11 +96,24 @@ you company:
   **goes outside** for a while ("Going out for a stretch.") and comes back from the other side. It
   walks along the floor and climbs the edges, so it never walks across your list. Rest the pointer on
   it and it makes room; while you drag a row it lets the drop through.
-- It **blinks, winks, swishes its tail, twitches an ear** and looks around, and **naps** late at night.
-- What it says shows in a **speech bubble** next to it, which fades after a few seconds.
+- It **steps outside the window**: the launcher has a see-through border on each side, and Byte sits
+  out there beside the app now and then (instead of walking off the edge). Clicks on the empty border
+  go to whatever is behind it.
+  **☰ → Byte can leave the window** turns the border off; maximized or full screen there's none.
+- It has a face that shows how it feels: big shiny eyes that turn into happy ^ ^, go wide when it's
+  surprised, get sleepy at bedtime, become hearts when you pet it and sparkle when you earn a badge;
+  rosy cheeks; ears that perk up and droop; a curly tail that wags; and it squashes and stretches when
+  it hops. It **blinks, winks** and looks around, and **naps** late at night.
+- What it says shows in a **speech bubble** next to it that pops up, types itself out and fades
+  after a few seconds. On the floor, the bubble sits beside it, so it never covers your list.
 - It **says something** now and then: good morning with today's date, a **word of the day** (a
-  computing word, explained plainly), a **joke of the day**, or a "did you know" shell tip. Click it
-  for the next one (it says *mrrp?*).
+  computing word, explained plainly), a **joke of the day**, or a "did you know" shell tip.
+- **Poke it** (click) and it wobbles, meows and asks "What can I do for you?" with buttons:
+  **[A tip] [A joke] [My badges]** (it chatters as it answers). Poke it three times in a row and it
+  purrs with heart eyes. The × closes the question.
+- **Pick it up**: drag it somewhere else ("Wheee!"). Let go beside the list and it sits there, at the
+  window's edge it hangs and peeks, outside the window it sits beside it, anywhere else it drops to
+  the floor. It stays put for a while.
 - It **reacts** when you do things: a hop and a blush for a new favorite, a wave when something
   opens, a nod when a dragged row lands. The tips above come from the cat, too.
 - **It watches your kitty tabs** (in **My kitty window** mode) and comments: a long build or test
@@ -114,8 +130,8 @@ you company:
 
 ![The Badges window: 5 of 12 found, earned badges with their dates, the rest locked with how to earn them](docs/images/badges.png)
 
-**☰ → Byte the cat** hides it (its timers stop too), and **☰ → Byte watches my kitty tabs** turns
-the watching off. It never goes online; the words, jokes and tips
+**☰ → Byte the cat** hides it (its timers stop too), **☰ → Byte watches my kitty tabs** turns
+the watching off, and **☰ → Byte can leave the window** keeps it inside. It never goes online; the words, jokes and tips
 are built in. No weather, for that reason.
 
 ![Ticking three rows changes the top button from "Add all to kitty" to "Add 3 to kitty"; switching Open in to "One new window" makes it "Open 3 in tabs", and "Separate windows" makes it "Open 3 in windows"](docs/images/gifs/tick-and-open.gif)

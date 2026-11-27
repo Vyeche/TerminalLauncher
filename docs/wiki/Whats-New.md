@@ -3,6 +3,22 @@
 Changes you'd notice, newest first. To get them: `git pull` in your clone, then close and reopen the
 launcher (see [Installing](Installing#updating)).
 
+## 2026-11-27
+- **Byte steps outside the window:** the launcher now has a see-through border on each side, and
+  Byte walks out there and sits beside the app; you can carry it out too. Clicks on the empty border
+  go to what's behind. **☰ → Byte can leave the window** turns it off. See
+  [Outside the window](Byte-the-Cat#outside-the-window).
+- **A cuter Byte:** a new face with big shiny eyes that show how it feels (happy, surprised, sleepy,
+  heart eyes when petted, sparkles for a badge), rosy cheeks, perky ears, a curly wagging tail, and
+  squash and stretch. It's bigger too, and the window opens a little wider to make room.
+- **Carry Byte:** drag it to a new spot; it sits in a margin, peeks from an edge, or drops to the floor.
+- **Poke Byte:** it wobbles, meows and asks "What can I do for you?" (**A tip**, **A joke**,
+  **My badges**). Three pokes in a row and it purrs.
+- **Offers with buttons:** "Open them together?", "Make it a favorite?" and, with an empty list,
+  "Shall I open Add for you?", each with **Not now** and **Don't ask again**.
+- **Warmer sounds**, and Byte's own voice: a meow, a "mrrp?", a purr and a little chatter.
+  `python3 terminal-launcher.py --sounds` plays them all.
+
 ## 2026-11-25 (evening)
 - **Byte walks around:** it no longer sits in a bar at the bottom. It walks along the floor of the
   window, climbs up beside the list, visits the row you just starred or opened, peeks in from the

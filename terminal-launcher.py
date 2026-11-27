@@ -449,7 +449,7 @@ def recent_sessions(limit=30):
 # and kept in ~/.cache/terminal-launcher/sounds/. They play with whichever of pw-play, paplay or aplay
 # is installed. Off with ☰ → Sounds, or with the desktop's own "event sounds" switch.
 SOUND_DIR = LOG.parent / "sounds"
-SOUND_VERSION = 1   # bump when the notes change, so the cached files are made again
+SOUND_VERSION = 5   # bump when the notes change, so the cached files are made again
 SOUND_PEAK = 0.18   # of full scale (about -15 dBFS): a soft tick, never an alert
 SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1[, glide to Hz])
     "star": [(0.0, 784, 0.16, 1.0), (0.07, 1175, 0.24, 0.8)],                       # G5 → D6, up
@@ -459,36 +459,120 @@ SOUNDS = {  # name: notes as (start s, frequency Hz, length s, loudness 0..1[, g
     "tip": [(0.0, 880, 0.18, 0.5), (0.09, 1109, 0.18, 0.45), (0.18, 1319, 0.3, 0.4)],  # A5 C♯6 E6
     "badge": [(0.0, 1047, 0.12, 0.6), (0.06, 1319, 0.12, 0.55), (0.12, 1568, 0.14, 0.5),
               (0.18, 2093, 0.35, 0.45)],                                             # a C-major sparkle
-    "chirp": [(0.0, 700, 0.16, 0.8, 1050)],                                          # the cat: "mrrp?"
     "done": [(0.0, 659, 0.12, 0.7), (0.08, 988, 0.26, 0.6)],                       # E5 → B5: it worked
     "oops": [(0.0, 392, 0.14, 0.7), (0.09, 330, 0.24, 0.6)],                       # G4 → E4: it didn't
 }
 
 
+def warm(buf, rate=44100):
+    """Make a sound rounder and cosier: soften the highs (a gentle low-pass) and add a tiny room (two
+    quiet echoes), so it doesn't sound dry or sharp."""
+    out, lp = [], 0.0
+    for x in buf:
+        lp += 0.28 * (x - lp)                       # roughly a 2.5 kHz low-pass
+        out.append(lp)
+    out += [0.0] * int(0.09 * rate)
+    for delay, gain in ((0.031, 0.18), (0.067, 0.09)):
+        d = int(delay * rate)
+        for k in range(len(out) - 1, d - 1, -1):
+            out[k] += gain * out[k - d]
+    return out
+
+
 def synth(notes, rate=44100):
-    """Soft marimba-like notes (a sine plus a quiet octave, 4 ms attack, quick decay), scaled so the
-    loudest sample is SOUND_PEAK. A note with a fifth value glides to that frequency."""
+    """Soft, warm marimba-like notes: a sine with a gently detuned twin and a quiet octave, a soft 8 ms
+    start and a quick fade, then warm(); scaled so the loudest sample is SOUND_PEAK. A note with a
+    fifth value glides to that frequency."""
     length = max(n[0] + n[2] for n in notes) + 0.02
     buf = [0.0] * int(length * rate)
     for start, freq, dur, amp, *glide in notes:
         s0 = int(start * rate)
         end = glide[0] if glide else freq
-        phase = 0.0
+        phase = phase2 = 0.0
         for k in range(int(dur * rate)):
             t = k / rate
-            phase += 2 * math.pi * (freq + (end - freq) * t / dur) / rate
-            env = min(1.0, t / 0.004) * math.exp(-7.0 * t / dur)
-            buf[s0 + k] += amp * env * (math.sin(phase) + 0.25 * math.sin(2 * phase))
+            f = freq + (end - freq) * t / dur
+            phase += 2 * math.pi * f / rate
+            phase2 += 2 * math.pi * f * 1.004 / rate     # a slightly detuned twin: warmth
+            env = min(1.0, t / 0.008) * math.exp(-6.0 * t / dur)
+            buf[s0 + k] += amp * env * (0.6 * math.sin(phase) + 0.4 * math.sin(phase2) + 0.12 * math.sin(2 * phase))
+    buf = warm(buf, rate)
     peak = max(abs(x) for x in buf) or 1.0
     return [x / peak * SOUND_PEAK for x in buf]
 
 
+def _toon(notes, rate=44100):
+    """A cute, cartoon voice: clean round tones (a sine with a quiet octave, no noise) that glide and
+    wobble a little, like a toy or a cozy game character. notes: [(start s, length s, pitch from,
+    pitch to, loudness)]; each note eases in and out and gets a gentle vibrato."""
+    total = max(st + ln for st, ln, *_ in notes) + 0.02
+    out = [0.0] * int(total * rate)
+    for st, ln, f_a, f_b, amp in notes:
+        s0, n, phase = int(st * rate), int(ln * rate), 0.0
+        for k in range(n):
+            t, x = k / rate, k / max(1, n - 1)
+            ease = x * x * (3 - 2 * x)
+            f = (f_a + (f_b - f_a) * ease) * (1 + 0.012 * math.sin(2 * math.pi * 7 * t))
+            phase += 2 * math.pi * f / rate
+            env = min(1.0, t / 0.025) * min(1.0, (ln - t) / 0.09) ** 1.5
+            out[s0 + k] += amp * env * (math.sin(phase) + 0.15 * math.sin(2 * phase))
+    return out
+
+
+def _meow():
+    """A cute "mew~": a soft squeak that rises, settles, and a little "nya" on top."""
+    return _toon([(0.0, 0.34, 590, 790, 1.0), (0.30, 0.20, 750, 670, 0.85), (0.56, 0.17, 850, 900, 0.6)])
+
+
+def _chirp():
+    """A bubbly "mrrp?": two quick notes going up, like a question."""
+    return _toon([(0.0, 0.12, 540, 660, 0.9), (0.12, 0.18, 690, 900, 1.0)])
+
+
+def _babble():
+    """Chirpy little blips that bounce up and down, like the talking in cozy games, ending lower."""
+    pitches = (690, 810, 630, 870, 750, 900, 720, 600)
+    notes, t = [], 0.0
+    for i, f in enumerate(pitches):
+        ln = 0.075 if i % 3 else 0.105
+        notes.append((t, ln, f, f * (1.08 if i % 2 else 0.94), 0.8))
+        t += ln + 0.035
+    return _toon(notes)
+
+
+def _purr(rate=44100):
+    """A soft, gentle purr: a warm hum that rises and falls in three breaths (no rumble)."""
+    out = []
+    breaths = ((0.0, 0.6, 1.0), (0.68, 1.28, 0.8), (1.36, 1.96, 0.9))
+    for k in range(int(2.0 * rate)):
+        t = k / rate
+        breath = sum(g * math.sin(math.pi * (t - a) / (b - a)) for a, b, g in breaths if a <= t < b)
+        pulse = 0.7 + 0.3 * math.sin(2 * math.pi * 18 * t)
+        out.append(breath * pulse * (math.sin(2 * math.pi * 196 * t) + 0.35 * math.sin(2 * math.pi * 392 * t)))
+    return out
+
+
+# The cat's own voice: soft cartoon tones, made here like the other sounds
+SOUND_MAKERS = {
+    "meow": lambda: warm(_meow()),
+    "chirp": lambda: warm(_chirp()),
+    "purr": lambda: warm(_purr()),
+    "babble": lambda: warm(_babble()),
+}
+
+
 def sound_file(name):
-    """The WAV file for one of SOUNDS, made on first use."""
+    """The WAV file for one of SOUNDS or SOUND_MAKERS, made on first use (peak SOUND_PEAK)."""
     path = SOUND_DIR / f"{name}-v{SOUND_VERSION}.wav"
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        samples = array.array("h", (int(x * 32767) for x in synth(SOUNDS[name])))
+        if name in SOUND_MAKERS:
+            raw = SOUND_MAKERS[name]()
+            peak = max(abs(x) for x in raw) or 1.0
+            data = [x / peak * SOUND_PEAK for x in raw]
+        else:
+            data = synth(SOUNDS[name])
+        samples = array.array("h", (int(x * 32767) for x in data))
         tmp = path.with_suffix(".tmp")
         with wave.open(str(tmp), "wb") as w:
             w.setnchannels(1)
@@ -502,7 +586,7 @@ def sound_file(name):
 def play_sound(name):
     """Play one of SOUNDS in the background. Silent with --dry-run (so trying things never makes a
     noise) and when no player is installed."""
-    if DRY_RUN or name not in SOUNDS:
+    if DRY_RUN or (name not in SOUNDS and name not in SOUND_MAKERS):
         return
     player = next((p for p in ("pw-play", "paplay", "aplay") if shutil.which(p)), None)
     if not player:
@@ -588,95 +672,155 @@ BADGES = [  # (id, emoji, name, how to earn it; None = a secret until earned)
     ("wayfinder", "🗺️", "Wayfinder", "Open a Folder… and keep it in the list."),
     ("curious", "🐱", "Curious cat", None),   # pet the cat 10 times
 ]
-CAT_FUR, CAT_FUR_DARK, CAT_BELLY = (0.95, 0.63, 0.31), (0.82, 0.47, 0.20), (1.0, 0.89, 0.76)
-CAT_LINE, CAT_PINK, CAT_EYE = (0.24, 0.22, 0.27), (0.96, 0.55, 0.62), (0.20, 0.18, 0.22)
+CAT_FUR, CAT_FUR_DARK, CAT_BELLY = (0.97, 0.64, 0.30), (0.86, 0.48, 0.18), (1.0, 0.91, 0.80)
+CAT_LINE, CAT_PINK, CAT_EYE = (0.25, 0.20, 0.27), (0.98, 0.56, 0.64), (0.16, 0.13, 0.20)
+CAT_GOLD = (1.0, 0.80, 0.20)
 
 
 def cat_pose(**kw):
-    """The cat's pose. blink_*: 0 open .. 1 shut; tail and look: -1..1; hop, paw, ear: 0..1;
-    step: the walking phase in radians (None when it isn't walking); facing: 1 right, -1 left."""
-    p = {"blink_l": 0.0, "blink_r": 0.0, "mouth": "w", "ear": 0.0, "tail": 0.0, "hop": 0.0,
-         "paw": 0.0, "look": 0.0, "sleep": False, "blush": False, "step": None, "facing": 1}
+    """The cat's pose.
+    eyes: open, happy (^ ^), wide, sleepy, closed, love (hearts), star (sparkles); blink_l/blink_r 0..1
+    close one eye (a blink, a wink). mouth: w (ω), smile, o, meow. ears: -1 droop .. 1 perk (ear: a
+    twitch). tail, look: -1..1. hop, paw: 0..1. blush: 0..1. squash: -1 stretch .. 1 squash. tilt: a
+    wobble in radians. step: the walking phase (None when not walking). facing: 1 right, -1 left.
+    sleep: asleep (closed eyes, drooping ears, z z z)."""
+    p = {"eyes": "open", "blink_l": 0.0, "blink_r": 0.0, "mouth": "w", "ears": 0.0, "ear": 0.0, "tail": 0.0,
+         "hop": 0.0, "paw": 0.0, "look": 0.0, "blush": 0.35, "squash": 0.0, "tilt": 0.0, "step": None,
+         "facing": 1, "sleep": False}
     p.update(kw)
     return p
 
 
+def _heart(cr, x, y, s):
+    cr.move_to(x, y + s * 0.9)
+    cr.curve_to(x - s * 1.6, y - s * 0.2, x - s * 0.6, y - s * 1.3, x, y - s * 0.4)
+    cr.curve_to(x + s * 0.6, y - s * 1.3, x + s * 1.6, y - s * 0.2, x, y + s * 0.9)
+    cr.close_path()
+
+
+def _sparkle(cr, x, y, r):
+    for i in range(8):
+        a = i * math.pi / 4 - math.pi / 2
+        rr = r if i % 2 == 0 else r * 0.38
+        (cr.move_to if i == 0 else cr.line_to)(x + rr * math.cos(a), y + rr * math.sin(a))
+    cr.close_path()
+
+
 def draw_cat(cr, size, p):
-    """Draw the cat into a size × size square with cairo (114 units = the square: the cat is 100
-    units tall, with room above it for a hop)."""
+    """Draw Byte into a size × size square with cairo (130 units: the cat is about 100 tall, with room
+    above it to hop and stretch). Big shiny eyes with moods, rosy cheeks, a round head, a curly tail,
+    squash and stretch, and a wobble around its feet."""
     def ellipse(x, y, rx, ry):
-        cr.save(); cr.translate(x, y); cr.scale(rx, ry); cr.arc(0, 0, 1, 0, 2 * math.pi); cr.restore()
+        cr.save(); cr.translate(x, y); cr.scale(max(rx, 0.01), max(ry, 0.01)); cr.arc(0, 0, 1, 0, 2 * math.pi)
+        cr.restore()
 
     def fill_stroke(fill, lw=2.6):
         cr.set_source_rgb(*fill); cr.fill_preserve()
         cr.set_source_rgb(*CAT_LINE); cr.set_line_width(lw); cr.stroke()
 
+    p = dict(p)
+    blush = float(p["blush"]) if not isinstance(p["blush"], bool) else (1.0 if p["blush"] else 0.35)
+    ears = max(-1.0, min(1.0, p["ears"] + p.get("ear", 0.0) - (0.8 if p["sleep"] else 0.0)))
     cr.save()
-    cr.scale(size / 114, size / 114)
+    cr.scale(size / 130, size / 130)
     if p.get("facing", 1) < 0:                    # walking left: draw it mirrored
-        cr.translate(114, 0); cr.scale(-1, 1)
+        cr.translate(130, 0); cr.scale(-1, 1)
     step = p.get("step")
-    bob = 1.8 * abs(math.sin(step)) if step is not None else 0.0
-    if step is not None:
-        p = dict(p, tail=0.6 * math.sin(step * 0.5), look=0.6)
-    cr.translate(7, 13 - p["hop"] * 12 - bob)    # room above for the hop
+    bob = 2.0 * abs(math.sin(step)) if step is not None else 0.0
+    cr.translate(15, 27 - p["hop"] * 14 - bob)
     cr.set_line_join(1); cr.set_line_cap(1)      # round
-    t = p["tail"]                                 # the tail, swishing
-    cr.move_to(66, 84)
-    cr.curve_to(86, 86, 92 + 4 * t, 70, 84 + 10 * t, 56 - 4 * abs(t))
-    cr.set_source_rgb(*CAT_LINE); cr.set_line_width(11); cr.stroke_preserve()
-    cr.set_source_rgb(*CAT_FUR); cr.set_line_width(5.8); cr.stroke()
-    cr.move_to(28, 92)                            # body
-    cr.curve_to(24, 70, 34, 56, 50, 56); cr.curve_to(66, 56, 76, 70, 72, 92); cr.close_path()
-    fill_stroke(CAT_FUR)
-    ellipse(50, 80, 11, 11); cr.set_source_rgb(*CAT_BELLY); cr.fill()
-    lift = 3.5 * math.sin(step) if step is not None else 0.0    # walking: the paws take turns
-    ellipse(40, 92 - max(0.0, lift), 6, 4); fill_stroke(CAT_FUR)    # paws; the right one waves
-    if p["paw"] > 0:
-        a = p["paw"]
-        cr.save(); cr.translate(70 + 4 * a, 80 - 26 * a); cr.rotate(-0.6 * a)
-        ellipse(0, 0, 5.5, 6.5); fill_stroke(CAT_FUR); cr.restore()
-    else:
-        ellipse(60, 92 - max(0.0, -lift), 6, 4); fill_stroke(CAT_FUR)
-    for side, twitch in ((-1, p["ear"]), (1, 0.0)):   # ears; the left one twitches
-        cr.save(); cr.translate(50 + side * 15, 22); cr.rotate(side * 0.25 - twitch * 0.35)
-        cr.move_to(-9, 8); cr.line_to(0, -12); cr.line_to(9, 8); cr.close_path(); fill_stroke(CAT_FUR)
-        cr.move_to(-4.5, 5); cr.line_to(0, -5); cr.line_to(4.5, 5); cr.close_path()
+    cr.translate(50, 98); cr.rotate(p["tilt"])   # the wobble and squash/stretch happen around the feet
+    sq = p["squash"]
+    cr.scale(1 + 0.14 * sq, 1 - 0.16 * sq)
+    cr.translate(-50, -98)
+    t = p["tail"] if step is None else 0.6 * math.sin(step * 0.5)    # tail: a curl that wags
+    cr.move_to(64, 90)
+    cr.curve_to(84, 94, 96 + 5 * t, 78, 90 + 8 * t, 64)
+    cr.curve_to(86 + 8 * t, 56, 78 + 10 * t, 58, 82 + 9 * t, 64)
+    cr.set_source_rgb(*CAT_LINE); cr.set_line_width(10.5); cr.stroke_preserve()
+    cr.set_source_rgb(*CAT_FUR); cr.set_line_width(5.5); cr.stroke()
+    ellipse(50, 80, 21, 17); fill_stroke(CAT_FUR)                      # a small round body
+    ellipse(50, 83, 12, 11); cr.set_source_rgb(*CAT_BELLY); cr.fill()
+    lift = 3.5 * math.sin(step) if step is not None else 0.0            # walking: the paws take turns
+    ellipse(40, 96 - max(0.0, lift), 6.5, 4.2); fill_stroke(CAT_FUR)
+    if p["paw"] <= 0:
+        ellipse(60, 96 - max(0.0, -lift), 6.5, 4.2); fill_stroke(CAT_FUR)
+    for side in (-1, 1):                                                 # ears: perk (1) or droop (-1)
+        cr.save(); cr.translate(50 + side * 19, 22 + 2 * max(0, -ears))
+        cr.rotate(side * (0.32 + 0.45 * max(0, -ears) - 0.12 * max(0, ears)))
+        cr.move_to(-10, 9); cr.line_to(0, -13 - 3 * max(0, ears)); cr.line_to(10, 9); cr.close_path()
+        fill_stroke(CAT_FUR)
+        cr.move_to(-5, 6); cr.line_to(0, -6 - 2 * max(0, ears)); cr.line_to(5, 6); cr.close_path()
         cr.set_source_rgb(*CAT_PINK); cr.fill(); cr.restore()
-    ellipse(50, 38, 26, 21); fill_stroke(CAT_FUR)  # head
-    cr.set_source_rgb(*CAT_FUR_DARK); cr.set_line_width(2.2)
+    ellipse(50, 42, 31, 25); fill_stroke(CAT_FUR)                      # a big round head
+    cr.set_source_rgb(*CAT_FUR_DARK); cr.set_line_width(2.4)
     for x in (44, 50, 56):
-        cr.move_to(x, 18.5); cr.line_to(x, 24); cr.stroke()
-    look = p["look"] * 2.5
-    for x, blink in ((40, p["blink_l"]), (60, p["blink_r"])):
-        if p["sleep"] or blink >= 0.85:           # closed: a soft arc
-            cr.arc(x, 37, 4.5, 0.15 * math.pi, 0.85 * math.pi)
-            cr.set_source_rgb(*CAT_LINE); cr.set_line_width(2.4); cr.stroke()
-        else:
-            ellipse(x + look, 37, 4.2, 5.4 * (1 - blink)); cr.set_source_rgb(*CAT_EYE); cr.fill()
-            ellipse(x + look + 1.4, 35, 1.4, max(0.1, 1.4 * (1 - blink))); cr.set_source_rgb(1, 1, 1); cr.fill()
-    if p["blush"]:
-        for x in (35, 65):
-            ellipse(x, 45, 4, 2.2); cr.set_source_rgba(*CAT_PINK, 0.55); cr.fill()
-    cr.move_to(48, 43); cr.line_to(52, 43); cr.line_to(50, 45.5); cr.close_path()
+        cr.move_to(x, 19.5); cr.line_to(x, 25); cr.stroke()
+    for x in (31, 69):                                                   # rosy cheeks
+        ellipse(x, 51, 5.2, 3.0); cr.set_source_rgba(*CAT_PINK, 0.25 + 0.5 * blush); cr.fill()
+    look = (p["look"] if step is None else 0.6) * 2.5
+    for x, blink in ((38, p["blink_l"]), (62, p["blink_r"])):         # the eyes
+        kind = "closed" if p["sleep"] else ("happy" if blink >= 0.5 and p["eyes"] == "open" and blink < 0.85
+                                            else "closed" if blink >= 0.5 else p["eyes"])
+        ex = x + look
+        if kind in ("open", "wide", "sleepy"):
+            rx, ry = (7.6, 9.4) if kind == "wide" else (6.6, 8.2)
+            ry *= 1 - 0.8 * blink
+            ellipse(ex, 43, rx, ry); cr.set_source_rgb(*CAT_EYE); cr.fill()
+            ellipse(ex + 2.2, 39.5, 2.6 if kind == "wide" else 2.2, (2.8 if kind == "wide" else 2.4) * (1 - blink))
+            cr.set_source_rgb(1, 1, 1); cr.fill()
+            ellipse(ex - 2.4, 47, 1.2, 1.2 * (1 - blink)); cr.set_source_rgba(1, 1, 1, 0.85); cr.fill()
+            if kind == "sleepy":                      # a soft, curved lid over the top half
+                cr.move_to(ex - rx - 1.5, 44); cr.curve_to(ex - rx, 33, ex + rx, 33, ex + rx + 1.5, 44)
+                cr.curve_to(ex + rx * 0.5, 46.5, ex - rx * 0.5, 46.5, ex - rx - 1.5, 44)
+                cr.set_source_rgb(*CAT_FUR); cr.fill()
+                cr.move_to(ex - rx - 0.5, 44); cr.curve_to(ex - rx * 0.4, 46.6, ex + rx * 0.4, 46.6, ex + rx + 0.5, 44)
+                cr.set_source_rgb(*CAT_LINE); cr.set_line_width(2.2); cr.stroke()
+        elif kind == "happy":                         # ^ ^
+            cr.move_to(ex - 6, 45); cr.curve_to(ex - 3, 37, ex + 3, 37, ex + 6, 45)
+            cr.set_source_rgb(*CAT_LINE); cr.set_line_width(2.8); cr.stroke()
+        elif kind == "closed":                        # asleep or blinking: a soft downward arc
+            cr.move_to(ex - 6, 42); cr.curve_to(ex - 3, 47, ex + 3, 47, ex + 6, 42)
+            cr.set_source_rgb(*CAT_LINE); cr.set_line_width(2.6); cr.stroke()
+        elif kind == "love":
+            _heart(cr, ex, 43, 5.0); cr.set_source_rgb(*CAT_PINK); cr.fill_preserve()
+            cr.set_source_rgb(*CAT_LINE); cr.set_line_width(1.4); cr.stroke()
+        elif kind == "star":
+            ellipse(ex, 43, 6.6, 8.2); cr.set_source_rgb(*CAT_EYE); cr.fill()
+            _sparkle(cr, ex, 43, 5.4); cr.set_source_rgb(*CAT_GOLD); cr.fill()
+    if p["paw"] > 0:                                  # the waving paw, in front of the cheek
+        a = p["paw"]
+        cr.save(); cr.translate(76 + 4 * a, 80 - 22 * a); cr.rotate(-0.5 * a)
+        ellipse(0, 0, 6.2, 7.2); fill_stroke(CAT_FUR)
+        cr.set_source_rgb(*CAT_LINE); cr.set_line_width(1.2)
+        for dx in (-2.4, 0, 2.4):
+            cr.move_to(dx, -6.5); cr.line_to(dx, -3.5); cr.stroke()
+        cr.restore()
+    cr.move_to(48, 52); cr.line_to(52, 52); cr.line_to(50, 54.5); cr.close_path()   # nose and mouth
     cr.set_source_rgb(*CAT_PINK); cr.fill()
     cr.set_source_rgb(*CAT_LINE); cr.set_line_width(1.8)
-    if p["mouth"] == "w":                         # ω
-        cr.arc(47.5, 46, 2.5, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
-        cr.arc(52.5, 46, 2.5, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
+    if p["mouth"] == "w":
+        cr.arc(47.6, 55, 2.4, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
+        cr.arc(52.4, 55, 2.4, 0.05 * math.pi, 0.95 * math.pi); cr.stroke()
+    elif p["mouth"] == "meow":                        # open, with a little tongue
+        cr.move_to(45.5, 55.5); cr.curve_to(46, 63, 54, 63, 54.5, 55.5); cr.close_path()
+        cr.set_source_rgb(0.55, 0.20, 0.28); cr.fill_preserve(); cr.set_source_rgb(*CAT_LINE); cr.stroke()
+        ellipse(50, 60.2, 2.6, 1.6); cr.set_source_rgb(*CAT_PINK); cr.fill()
     elif p["mouth"] == "o":
-        ellipse(50, 49, 2.4, 3); cr.fill()
-    else:                                          # a smile
-        cr.arc(50, 45, 5, 0.15 * math.pi, 0.85 * math.pi); cr.stroke()
-    cr.set_line_width(1.1)                         # whiskers
+        ellipse(50, 58, 2.4, 3); cr.fill()
+    else:
+        cr.arc(50, 54, 5, 0.15 * math.pi, 0.85 * math.pi); cr.stroke()
+    cr.set_line_width(1.1)                            # whiskers
     for side in (-1, 1):
         for dy in (-1.5, 2):
-            cr.move_to(50 + side * 12, 45 + dy * 0.6); cr.line_to(50 + side * 27, 43 + dy * 2.2); cr.stroke()
-    if p["sleep"]:
-        cr.select_font_face("Sans", 0, 1)
-        for x, y, s in ((76, 18, 9), (84, 9, 7), (90, 2, 5)):
-            cr.set_font_size(s); cr.move_to(x, y); cr.set_source_rgba(*CAT_LINE, 0.8); cr.show_text("z")
+            cr.move_to(50 + side * 13, 53 + dy * 0.6); cr.line_to(50 + side * 29, 51 + dy * 2.2); cr.stroke()
     cr.restore()
+    if p["sleep"]:
+        cr.save(); cr.scale(size / 130, size / 130)
+        cr.select_font_face("Sans", 0, 1)
+        for x, y, fs in ((96, 34, 12), (106, 23, 9), (114, 15, 7)):
+            cr.set_font_size(fs); cr.move_to(x, y); cr.set_source_rgba(*CAT_LINE, 0.75); cr.show_text("z")
+        cr.restore()
 
 
 def cat_line(kind, now, extra=None):
@@ -724,15 +868,17 @@ def cat_route(pos, target, floor):
     return points
 
 
-def cat_spot(kind, w, h, size, rng, list_box=None, side=None):
+def cat_spot(kind, w, h, size, rng, list_box=None, side=None, inset=0):
     """A place for the cat in a w × h window, as (x, y) of its top-left corner, or None if there's no
-    room for that kind. kind: "floor" (along the bottom), "margin" (in the empty space beside the
-    list, when the window is wide enough; list_box = the list's (x, y, width, height)), "peek" (half
-    outside the left or right edge) or "outside" (just past an edge, on the floor). side: "left" or
-    "right", else chosen at random."""
+    room for that kind. The app is drawn `inset` px in from the left and right (a see-through border
+    the cat can step out into; 0 = none). kind: "floor" (along the app's bottom), "margin" (in the
+    empty space beside the list, when the app is wide enough; list_box = the list's (x, y, width,
+    height)), "peek" (half over the app's left or right edge), "beside" (outside the app, next to its
+    side, in the see-through border) or "outside" (past the window's edge, gone for a while). side:
+    "left" or "right", else chosen at random."""
     floor = max(0.0, h - size - 6)
     if kind == "floor":                          # with a side: only that half of the floor
-        lo, hi = 8, max(8, w - size - 8)
+        lo, hi = inset + 8, max(inset + 8, w - inset - size - 8)
         if side == "left":
             hi = max(lo, w / 2 - size)
         elif side == "right":
@@ -743,14 +889,18 @@ def cat_spot(kind, w, h, size, rng, list_box=None, side=None):
         if not list_box:
             return None
         lx, ly, lw, lh = list_box
-        room = lx if side == "left" else w - (lx + lw)
+        room = lx - inset if side == "left" else w - inset - (lx + lw)
         if room < size + 8:
             return None
-        x = (room - size) / 2 if side == "left" else lx + lw + (room - size) / 2
+        x = inset + (room - size) / 2 if side == "left" else lx + lw + (room - size) / 2
         top, bottom = max(ly, 8), min(ly + lh, floor) - size
         return (x, rng.uniform(top, bottom)) if bottom > top else (x, floor)
     if kind == "peek":
-        return (-size * 0.45 if side == "left" else w - size * 0.55), rng.uniform(h * 0.3, max(h * 0.3, floor))
+        return (inset - size * 0.45 if side == "left" else w - inset - size * 0.55), rng.uniform(h * 0.3, max(h * 0.3, floor))
+    if kind == "beside":
+        if inset < size + 8:
+            return None
+        return ((inset - size) / 2 if side == "left" else w - inset + (inset - size) / 2), floor
     if kind == "outside":
         return (-size - 24 if side == "left" else w + 24), floor
     raise ValueError(kind)
@@ -892,11 +1042,18 @@ row.dragging { opacity: 0.4; }
 row.glow { animation: tl-glow 1300ms ease-out; }
 @keyframes tl-press { 0% { transform: scale(1); } 45% { transform: scale(0.82); } 100% { transform: scale(1); } }
 .press { animation: tl-press 260ms ease-out; }
-.tl-page clamp { margin-bottom: 76px; }
+.tl-page clamp { margin-bottom: FLOORpx; }
 .cat-bubble { background-color: @popover_bg_color; color: @popover_fg_color; border-radius: 14px;
               padding: 7px 12px; margin: 4px; box-shadow: 0 1px 4px alpha(black, 0.28);
               font-style: italic; transition: opacity 400ms ease-out; }
 .cat-bubble.faded { opacity: 0; }
+@keyframes tl-pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; }
+                    100% { transform: scale(1); } }
+.cat-bubble.pop { animation: tl-pop 320ms ease-out; }
+.cat-bubble button { min-height: 26px; padding: 2px 10px; font-style: normal; }
+window.tl-outside, window.tl-outside > *, window.tl-outside .tl-stage { background: transparent; box-shadow: none; }
+window.tl-outside .tl-card { background-color: @window_bg_color; border-radius: 12px;
+                             box-shadow: 0 2px 10px alpha(black, 0.35), 0 0 0 1px alpha(black, 0.08); }
 """
 KIND_ICONS = {"claude": "chat-symbolic", "omp": "chat-symbolic", "opencode": "chat-symbolic",
               "terminal": "utilities-terminal-symbolic", "command": "system-run-symbolic"}
@@ -1088,13 +1245,34 @@ class EditDialog(Adw.Window):
         self.close()
 
 
+def click_rects(card, stage_at, surface_at, cat, size, bubble):
+    """The parts of the window that take clicks while it has the see-through border, as whole-pixel
+    (x, y, w, h) on the window's surface: the app's card (window coordinates), the cat at `cat` and
+    its bubble box `bubble` (both on the stage, which starts at `stage_at`; None = leave it out).
+    surface_at = where the window starts on its surface (GTK's shadow, if any)."""
+    sx, sy = surface_at
+    out = [(card[0] + sx, card[1] + sy, card[2], card[3])]
+    ox, oy = stage_at[0] + sx, stage_at[1] + sy
+    if cat:
+        out.append((cat[0] + ox, cat[1] + oy, size, size))
+    if bubble:
+        out.append((bubble[0] + ox, bubble[1] + oy, bubble[2], bubble[3]))
+    return [(math.floor(x), math.floor(y), math.ceil(w + x - math.floor(x)), math.ceil(h + y - math.floor(y)))
+            for x, y, w, h in out]
+
+
+def app_css():
+    """APP_CSS with the room the list keeps at the bottom for Byte filled in."""
+    return APP_CSS.replace("FLOORpx", f"{Cat.SIZE + 24}px")
+
+
 class Cat:
     """Byte on the window: a drawn cat and a speech bubble, floating over everything on a Gtk.Overlay
     (under the toasts). It sits on the floor or in the margins beside the list, walks between them,
     peeks in from the edges and now and then goes outside for a while. Only the cat itself takes
     clicks; the bubble and the space around it let them through. `now` and `rng` can be replaced
     (tests pin them). Its timers run only while it's shown."""
-    SIZE = 64
+    SIZE = 96
 
     def __init__(self, overlay, on_pet, now=None, rng=None):
         import random
@@ -1110,6 +1288,9 @@ class Cat:
         self.turn = 0
         self.visible = True
         self.list_box = lambda: None   # the Window gives the list's (x, y, w, h) on the overlay
+        self.inset = 0             # the see-through border on each side (Byte can step out into it)
+        self.on_moved = None       # the Window updates which parts of it take clicks
+        self.bubble_box = None     # where the bubble was last put: (x, y, w, h) on the overlay
         self.x, self.y = 12.0, 0.0
         self.target = None         # (x, y) while walking
         self.path = []             # the waypoints after it
@@ -1125,19 +1306,39 @@ class Cat:
                                     tooltip_text="Byte, the launcher's cat. Click to say hi.")
         self.area.set_draw_func(lambda _a, cr, w, h: draw_cat(cr, min(w, h), self._pose_now()))
         self.area.update_property([Gtk.AccessibleProperty.LABEL], ["Byte, the launcher's cat"])
+        self.held = False          # being carried by the pointer
+        self.placed_at = (0, 0)    # where the cat was last put on screen
+        self.dragged = False       # the last press turned into a drag (so it isn't a poke)
+        self.speed = CAT_SPEED
         click = Gtk.GestureClick()
-        click.connect("released", lambda *_: (self._cancel_scoot(), on_pet()))
+        click.connect("released", lambda *_: (self._cancel_scoot(), None if self.dragged else on_pet()))
         self.area.add_controller(click)
+        carry = Gtk.GestureDrag()   # pick it up and put it somewhere else
+        carry.connect("drag-begin", lambda *_: (setattr(self, "dragged", False), self._cancel_scoot()))
+        carry.connect("drag-update", self._on_drag)
+        carry.connect("drag-end", lambda *_: self.drop() if self.held else None)
+        self.area.add_controller(carry)
         hover = Gtk.EventControllerMotion()   # rest the pointer on it and it makes room
         hover.connect("enter", lambda *_: self._arm_scoot())
         hover.connect("leave", lambda *_: self._cancel_scoot())
         self.area.add_controller(hover)
         self.scoot_timer = 0
         self.area.set_cursor(Gdk.Cursor.new_from_name("pointer"))
-        self.label = Gtk.Label(wrap=True, max_width_chars=34, lines=4, ellipsize=3, xalign=0)
-        self.bubble = Gtk.Box(css_classes=["cat-bubble"], halign=Gtk.Align.START, valign=Gtk.Align.START,
-                              can_target=False)
-        self.bubble.append(self.label)
+        self.label = Gtk.Label(wrap=True, max_width_chars=34, lines=4, ellipsize=3, xalign=0, hexpand=True)
+        self.text = ""             # the whole line (the label may still be typing it out)
+        self.typing = 0
+        self.asking = False        # a question with buttons is up
+        self.bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=["cat-bubble"],
+                              halign=Gtk.Align.START, valign=Gtk.Align.START, can_target=False)
+        top = Gtk.Box(spacing=6)
+        top.append(self.label)
+        self.close_btn = Gtk.Button(icon_name="window-close-symbolic", css_classes=["flat", "circular"],
+                                    valign=Gtk.Align.START, visible=False, tooltip_text="Never mind")
+        self.close_btn.connect("clicked", lambda *_: self.close_question())
+        top.append(self.close_btn)
+        self.choices = Gtk.Box(spacing=6, visible=False)
+        self.bubble.append(top)
+        self.bubble.append(self.choices)
         overlay.add_overlay(self.area)
         overlay.add_overlay(self.bubble)
         overlay.connect("get-child-position", self._place)
@@ -1148,27 +1349,50 @@ class Cat:
     def size(self):
         return max(1, self.overlay.get_width()), max(1, self.overlay.get_height())
 
+    def in_border(self):
+        """Is it sitting out in the see-through border (and still on the floor there)?"""
+        w, h = self.size()
+        mid, g = self.x + self.SIZE / 2, self.inset
+        return g >= self.SIZE + 8 and (0 < mid < g or w - g < mid < w) and abs(self.y - (h - self.SIZE - 6)) <= 2
+
     def _place(self, _overlay, child, rect):
         w, h = self.size()
         if not self.placed and h > self.SIZE * 2:      # first time: sit on the floor, left
-            self.x, self.y, self.placed = 12.0, h - self.SIZE - 6.0, True
+            self.x, self.y, self.placed = self.inset + 12.0, h - self.SIZE - 6.0, True
         if child is self.area:
             rect.x, rect.y, rect.width, rect.height = round(self.x), round(self.y), self.SIZE, self.SIZE
+            self.placed_at = (rect.x, rect.y)
             return True
         if child is self.bubble:
             _min, nat = child.get_preferred_size()
             bw, bh = min(nat.width, max(80, w - 12)), nat.height
             cx = min(max(self.x, 0), w - self.SIZE)       # a cat outside still talks from the edge
-            bx = min(max(cx + self.SIZE / 2 - bw / 2, 6), max(6, w - bw - 6))
-            by = self.y - bh - 4
-            if by < 6:
-                by = self.y + self.SIZE + 4
+            floor = h - self.SIZE - 6
+            if self.y >= floor - 4:
+                # on the floor: talk beside it, in the empty strip the list keeps at the bottom, so the
+                # bubble (and its buttons) never covers a row
+                right = cx + self.SIZE + 4
+                bx = right if right + bw <= w - 6 else cx - bw - 4
+                bx = min(max(bx, 6), max(6, w - bw - 6))
+                by = h - bh - 8
+            else:
+                bx = min(max(cx + self.SIZE / 2 - bw / 2, 6), max(6, w - bw - 6))
+                by = self.y - bh - 4
+                if by < 6:
+                    by = self.y + self.SIZE + 4
             rect.x, rect.y, rect.width, rect.height = round(bx), round(min(by, h - bh - 6)), bw, bh
+            box = (rect.x, rect.y, bw, bh)
+            if box != self.bubble_box:
+                self.bubble_box = box
+                if self.asking and self.on_moved:     # its buttons must take clicks out there too
+                    GLib.idle_add(lambda: self.on_moved() and False)
             return True
         return False
 
     def _relayout(self):
         self.overlay.queue_allocate()
+        if self.on_moved:
+            self.on_moved()
 
     def go(self, x, y, spot):
         """Walk to (x, y) (or jump there when animations are off) and call it `spot`."""
@@ -1192,14 +1416,18 @@ class Cat:
         w, h = self.size()
         if kind is None:
             r = self.rng.random()
-            kind = "floor" if r < 0.45 else "margin" if r < 0.75 else "peek" if r < 0.9 else "outside"
-        spot = cat_spot(kind, w, h, self.SIZE, self.rng, self.list_box(), side)
+            if self.inset:   # room outside the app: it sits out there instead of leaving (the window's
+                             # real edge is invisible, so walking off it would cut the cat off in mid-air)
+                kind = "floor" if r < 0.35 else "margin" if r < 0.6 else "beside" if r < 0.9 else "peek"
+            else:
+                kind = "floor" if r < 0.45 else "margin" if r < 0.75 else "peek" if r < 0.9 else "outside"
+        spot = cat_spot(kind, w, h, self.SIZE, self.rng, self.list_box(), side, self.inset)
         if kind == "outside":                      # remember the way out: it comes back the other way
             side = side or self.rng.choice(["left", "right"])
             self.exit_side = side
             spot = cat_spot(kind, w, h, self.SIZE, self.rng, side=side)
         if spot is None:
-            kind, spot = "floor", cat_spot("floor", w, h, self.SIZE, self.rng)
+            kind, spot = "floor", cat_spot("floor", w, h, self.SIZE, self.rng, inset=self.inset)
         if kind == "outside":
             self.away_until = time.monotonic() + self.rng.uniform(20, 60)
             self.say(self.rng.choice(["Back in a bit.", "Going out for a stretch.", "I'll be right back."]), 4)
@@ -1208,14 +1436,18 @@ class Cat:
         self.go(*spot, "away" if kind == "outside" else kind)
 
     def come_back(self, side=None):
-        """From outside: appear just past the edge across from the one it left by, and walk in."""
+        """From outside: appear just past the edge across from the one it left by, and walk in (with
+        the see-through border: hop in from beside the app, so it's never cut off in mid-air)."""
         w, h = self.size()
         gone = getattr(self, "exit_side", None)
         side = side or {"left": "right", "right": "left"}.get(gone) or self.rng.choice(["left", "right"])
-        self.x, self.y = cat_spot("outside", w, h, self.SIZE, self.rng, side=side)
+        spot = cat_spot("beside", w, h, self.SIZE, self.rng, side=side, inset=self.inset)
+        self.x, self.y = spot or cat_spot("outside", w, h, self.SIZE, self.rng, side=side)
+        if spot:
+            self.play("hop", 0.5)
         self.away_until = 0.0
         self._relayout()
-        self.go(*cat_spot("floor", w, h, self.SIZE, self.rng), "floor")
+        self.go(*cat_spot("floor", w, h, self.SIZE, self.rng, inset=self.inset), "floor")
 
     def visit(self, widget):
         """Go and sit beside a row (in the margin when there's room, else on the floor below it)."""
@@ -1227,17 +1459,75 @@ class Cat:
         w, h = self.size()
         if self.spot == "away":
             self.come_back()
-        lx = b.get_x()
+        lx, g = b.get_x(), self.inset
         y = min(max(b.get_y() + b.get_height() / 2 - self.SIZE / 2, 6), h - self.SIZE - 6)
-        if lx >= self.SIZE + 8:
-            self.go((lx - self.SIZE) / 2, y, "row")
+        if lx - g >= self.SIZE + 8:
+            self.go(g + (lx - g - self.SIZE) / 2, y, "row")
         else:
-            self.go(min(max(lx + 8, 8), w - self.SIZE - 8), h - self.SIZE - 6, "row")
+            self.go(min(max(lx + 8, g + 8), w - g - self.SIZE - 8), h - self.SIZE - 6, "row")
         self.back_at = time.monotonic() + 15
 
     def on_scroll(self):
         if self.spot == "row":                       # the row moved away under it
             self.wander("floor")
+
+    def _on_drag(self, gesture, dx, dy):
+        if not self.held:
+            if math.hypot(dx, dy) < 6:                # a click, not a drag (yet)
+                return
+            self.dragged = True
+            self.pick_up()
+        # GTK measures the offset in the cat's own coordinates, and the cat moves with the pointer: so
+        # the pointer is at (where the cat was last placed + offset + where it was grabbed)
+        ax, ay = self.placed_at
+        self.drag_to(ax + dx, ay + dy)
+
+    def pick_up(self):
+        """Lifted by the pointer: it stops what it's doing, dangles and says so."""
+        self.close_question()
+        self.held, self.target, self.path = True, None, []
+        self.spot = "held"
+        self.say(self.rng.choice(["Wheee!", "Whoa, up we go!", "Hehe, careful!", "Mrrp! Where to?"]), 3)
+        self._ensure_frames()
+
+    def drag_to(self, x, y):
+        w, h = self.size()                            # it can hang a little over the edges, not vanish
+        if self.inset:                                # the window's real edge is invisible: stay whole
+            self.x = min(max(x, 0), w - self.SIZE)
+        else:
+            self.x = min(max(x, -self.SIZE * 0.6), w - self.SIZE * 0.4)
+        self.y = min(max(y, -self.SIZE * 0.2), h - self.SIZE - 6)
+        self._relayout()
+
+    def drop(self):
+        """Let go: in a margin beside the list it sits there, at the app's edge it hangs and peeks
+        there, outside the app (in the see-through border) or anywhere else it drops quickly to the
+        floor. Then it stays a while before wandering."""
+        self.held = False
+        w, h = self.size()
+        floor = h - self.SIZE - 6
+        mid = self.x + self.SIZE / 2
+        box = self.list_box()
+        now = time.monotonic()
+        self.next_move = now + 40
+        g = self.inset
+        if g and (mid < g or mid > w - g):            # out beside the app: down to the floor out there
+            self.speed = CAT_SPEED * 2.6
+            self.spot, self.path, self.target = "beside", [], (self.x, floor)
+            if self.y < floor - 4:
+                self.play("hop", 0.5)
+        elif self.x < g - self.SIZE * 0.25 or self.x > w - g - self.SIZE * 0.75:
+            self.spot, self.back_at = "peek", now + 40
+        elif self.y < floor - 4 and box and (mid < box[0] or mid > box[0] + box[2]):
+            self.spot, self.back_at = "margin", now + 40
+        elif self.y < floor - 4:
+            self.speed = CAT_SPEED * 2.6              # a quick drop to the floor
+            self.spot, self.path, self.target = "floor", [], (self.x, floor)
+            self.play("hop", 0.5)
+        else:
+            self.spot = "floor"
+        self._ensure_frames()
+        self._relayout()
 
     def passthrough(self, on):
         """While a row is dragged, the cat mustn't catch the drop."""
@@ -1245,7 +1535,8 @@ class Cat:
 
     def _arm_scoot(self):
         self._cancel_scoot()
-        self.scoot_timer = GLib.timeout_add(1200, self._scoot)
+        if not self.asking:                           # not while it's asking you something
+            self.scoot_timer = GLib.timeout_add(1200, self._scoot)
 
     def _cancel_scoot(self):
         if self.scoot_timer:
@@ -1260,13 +1551,93 @@ class Cat:
         return False
 
     # ---------- what it says ----------
-    def say(self, text, hold=12):
-        """Say something now; the bubble stays up for `hold` seconds, then fades out."""
-        self.label.set_label(text)
+    def say(self, text, hold=12, typed=False):
+        """Say something now; the bubble pops up, stays for `hold` seconds, then fades out. typed=True
+        types it out letter by letter (the bubble keeps its full size: the rest is drawn invisible)."""
+        if self.asking:                  # a question is up: don't wipe it (the move still plays)
+            return
+        self._set_text(text, typed)
         self.area.set_tooltip_text(f"{text}\n\n{self.tip_base}" if hasattr(self, "tip_base") else text)
         self.until = time.monotonic() + hold
+        self._pop()
+
+    def _set_text(self, text, typed):
+        """Show `text`; typed=True types it out with the cat's mouth moving (lip sync). The bubble is
+        measured for the whole sentence first and keeps that size, so nothing jumps while it types."""
+        self.text = text
+        if self.typing:
+            GLib.source_remove(self.typing)
+            self.typing = 0
+        self.label.set_size_request(-1, -1)
+        self.label.set_label(text)
+        self.talk = False
+        if not typed or not Gtk.Settings.get_default().get_property("gtk-enable-animations"):
+            return
+        _min, nat = self.label.get_preferred_size()
+        self.label.set_size_request(nat.width, nat.height)
+        shown, ticks = [0], [0]
+
+        def step():
+            shown[0] = min(len(text), shown[0] + 2)
+            ticks[0] += 1
+            self.label.set_label(text[:shown[0]])
+            if ticks[0] % 3 == 0:                     # the mouth opens and closes, about 11 times a second
+                self.talk = not self.talk
+            self.area.queue_draw()
+            if shown[0] < len(text):
+                return True
+            self.typing = 0
+            self.talk = False
+            self.area.queue_draw()
+            return False
+        step()
+        self.typing = GLib.timeout_add(30, step)
+
+    def _pop(self):
+        """Show the bubble with a little bounce."""
         self.bubble.remove_css_class("faded")
         self.bubble.set_visible(self.visible)
+        self.bubble.remove_css_class("pop")
+        if Gtk.Settings.get_default().get_property("gtk-enable-animations"):
+            self.bubble.add_css_class("pop")
+            GLib.timeout_add(400, lambda: self.bubble.remove_css_class("pop") and False)
+        self._relayout()
+
+    def ask(self, text, choices, hold=25):
+        """A question with buttons: choices = [(label, callback or None)]. While it's up the bubble takes
+        clicks, and the cat stays put and keeps quiet. A button, the × or `hold` seconds close it."""
+        self.close_question()
+        if self.spot == "away":
+            self.come_back()
+        self._set_text(text, True)
+        for label, cb in choices:
+            b = Gtk.Button(label=label, css_classes=["pill", "small"] + (["suggested-action"] if cb and not
+                                                                          self.choices.get_first_child() else []),
+                           tooltip_text=label)
+            b.connect("clicked", lambda _b, cb=cb: (self.close_question(), cb and cb()))
+            self.choices.append(b)
+        self.asking = True
+        self.choices.set_visible(True)
+        self.close_btn.set_visible(True)
+        self.bubble.set_can_target(True)
+        self.target, self.path = None, []           # it stays where it is while you read
+        self.until = time.monotonic() + hold
+        self._pop()
+        self._relayout()
+
+    def close_question(self):
+        if not self.asking:
+            return
+        self.asking = False
+        child = self.choices.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            self.choices.remove(child)
+            child = nxt
+        self.choices.set_visible(False)
+        self.close_btn.set_visible(False)
+        self.bubble.set_can_target(False)
+        self.until = time.monotonic() + 1.5
         self._relayout()
 
     def next_line(self):
@@ -1302,13 +1673,15 @@ class Cat:
         dt, self.last_frame = min(0.1, now - self.last_frame), now
         self.anims = [a for a in self.anims if now - a[0] < a[1]]
         if self.target:
-            self.x, self.y, arrived = cat_step((self.x, self.y), self.target, dt)
+            self.x, self.y, arrived = cat_step((self.x, self.y), self.target, dt, self.speed)
             self.phase += dt * 11
             if arrived:
                 self._next_leg()
+                if not self.target:
+                    self.speed = CAT_SPEED
             self._relayout()
         self.area.queue_draw()
-        if self.anims or self.target:
+        if self.anims or self.target or self.held:
             return True
         self.timers = [t for t in self.timers if t[0] != "frame"]
         return False
@@ -1317,7 +1690,15 @@ class Cat:
         p = dict(self.pose)
         p["facing"] = self.facing
         p["sleep"] = self.asleep() and not self.anims and not self.target
-        p["step"] = self.phase if self.target else None
+        if not p["sleep"] and self.now().hour == 22:   # the hour before its nap: heavy eyelids
+            p["eyes"] = "sleepy"
+        p["step"] = self.phase if self.target and self.speed == CAT_SPEED else None   # walking, not falling
+        if self.typing:                                # talking: lip sync with the typing
+            p["mouth"] = "meow" if getattr(self, "talk", False) else "w"
+        if self.held:                                  # carried: wide eyes, perked ears, a swinging tail
+            p.update(eyes="wide", mouth="o", ears=1.0, squash=-0.35, blush=0.8,
+                     tail=math.sin(time.monotonic() * 7) * 0.9)
+            return p
         if self.spot == "peek" and not self.target:   # peeking in from the edge looks inward
             w, _h = self.size()
             p["facing"] = 1 if self.x < w / 2 else -1
@@ -1332,9 +1713,13 @@ class Cat:
                 p["blink_r"] = min(1.0, bump * 1.6); p["mouth"] = "smile"
             elif kind == "hop":
                 p["hop"] = bump; p["mouth"] = "smile"; p["blush"] = True
+                p["eyes"] = "happy"; p["squash"] = -0.5 * bump; p["ears"] = 0.6
+            elif kind == "badge":                      # a badge: a big stretchy hop with sparkly eyes
+                p["hop"] = bump; p["squash"] = -0.6 * bump; p["eyes"] = "star"; p["mouth"] = "smile"
+                p["blush"] = 1.0; p["ears"] = 1.0
             elif kind == "wave":
                 p["paw"] = min(1.0, bump * 1.5); p["tail"] = math.sin(f * 4 * math.pi) * 0.3
-                p["mouth"] = "smile"
+                p["mouth"] = "smile"; p["eyes"] = "happy"
             elif kind == "tail":
                 p["tail"] = math.sin(f * 2 * math.pi)
             elif kind == "ear":
@@ -1343,6 +1728,13 @@ class Cat:
                 p["look"] = math.sin(f * 2 * math.pi)
             elif kind == "nod":
                 p["hop"] = -0.25 * bump; p["blink_l"] = p["blink_r"] = 0.5 * bump
+            elif kind == "wobble":                     # poked: it wobbles on its feet and settles
+                p["tilt"] = 0.28 * math.sin(f * 5 * math.pi) * (1 - f); p["squash"] = 0.4 * bump
+                p["eyes"] = "wide"; p["mouth"] = "o"; p["ears"] = 1.0
+            elif kind == "meow":                       # meowing: the mouth open while the sound plays
+                p["mouth"] = "meow" if f < 0.85 else "w"; p["eyes"] = "happy"; p["ears"] = 0.8
+            elif kind == "love":                       # being petted: heart eyes and a happy blush
+                p["eyes"] = "love"; p["mouth"] = "smile"; p["blush"] = True; p["tail"] = math.sin(f * 6 * math.pi) * 0.6
             elif kind == "surprise":
                 p["mouth"] = "o"; p["ear"] = bump
         return p
@@ -1352,11 +1744,23 @@ class Cat:
         and let the bubble fade when its time is up."""
         now = time.monotonic()
         w, h = self.size()
+        if self.held:                                 # being carried: nothing else for now
+            return True
+        if self.asking:                               # a question is up: stay put and quiet
+            if now > self.until:
+                self.close_question()
+            else:
+                if not self.asleep() and self.rng.random() < 0.22:
+                    self.play("blink", 0.18)
+                return True
         if self.spot != "away" and not self.target and (self.x > w - self.SIZE * 0.4 or self.y > h - self.SIZE + 2) \
                 and self.spot != "peek":
             self.wander("floor")                      # the window got smaller: back inside
         elif self.spot == "floor" and not self.target and abs(self.y - (h - self.SIZE - 6)) > 2:
-            self.go(min(max(self.x, 8), max(8, w - self.SIZE - 8)), h - self.SIZE - 6, "floor")   # it got bigger
+            g = self.inset                            # it got bigger
+            self.go(min(max(self.x, g + 8), max(g + 8, w - g - self.SIZE - 8)), h - self.SIZE - 6, "floor")
+        elif self.spot == "beside" and not self.target and not self.in_border():
+            self.wander("beside", "left" if self.x < w / 2 else "right")   # resized, or no border now
         if self.spot == "away":
             if now > self.away_until:
                 self.come_back()
@@ -1409,12 +1813,12 @@ class Cat:
         if self.spot == "away":
             self.come_back()
         self.say(text, hold)
-        self.play(move, {"blink": 0.18, "hop": 0.5, "wave": 1.1, "nod": 0.5}.get(move, 0.8))
+        self.play(move, {"blink": 0.18, "hop": 0.5, "wave": 1.1, "nod": 0.5, "badge": 1.0}.get(move, 0.8))
 
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title=APP_NAME, default_width=720, default_height=640)
+        super().__init__(application=app, title=APP_NAME, default_width=800, default_height=680)
         self.sessions = load_sessions()
         if favorites_first(self.sessions) != self.sessions:   # starred entries live at the top
             self.sessions = favorites_first(self.sessions)
@@ -1425,6 +1829,10 @@ class Window(Adw.ApplicationWindow):
         self.tips_on = settings.get("tips", True) is not False
         self.cat_on = settings.get("cat", True) is not False and HAVE_CAIRO
         self.watch_on = settings.get("watch", True) is not False
+        self.outside_on = settings.get("outside", True) is not False
+        self._gutter = 0             # the see-through border Byte can step out into (0 = none)
+        self._region_set = False     # we gave the window its own input region
+        self._region_rects = None    # ... made of these
         self._watch_prev = None      # the last kitty snapshot (None until kitty answers)
         self._watch_busy = False     # a `kitty @ ls` is running in the worker thread
         self._watch_skip = 0         # ticks to skip after kitty didn't answer (back off)
@@ -1454,7 +1862,7 @@ class Window(Adw.ApplicationWindow):
         self.favs_act.connect("activate", lambda *_: self._open_many(favorites=True))
         self.add_action(self.favs_act)
         for name, on in (("sounds", self.sounds_on), ("tips", self.tips_on), ("cat", self.cat_on),
-                         ("watch", self.watch_on)):
+                         ("watch", self.watch_on), ("outside", self.outside_on)):
             a = Gio.SimpleAction.new_stateful(name, None, GLib.Variant("b", on))
             a.connect("change-state", self._switch_changed)
             self.add_action(a)
@@ -1494,6 +1902,7 @@ class Window(Adw.ApplicationWindow):
         cat_menu = Gio.Menu()
         cat_menu.append("Byte the cat", "win.cat")
         cat_menu.append("Byte watches my kitty tabs", "win.watch")
+        cat_menu.append("Byte can leave the window", "win.outside")
         cat_menu.append("Badges…", "win.badges")
         primary.append_section(None, cat_menu)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=primary,
@@ -1503,10 +1912,16 @@ class Window(Adw.ApplicationWindow):
         self.open_btn.connect("clicked", lambda *_: self._open_many())
         header.pack_end(self.open_btn)
         tv.add_top_bar(header)
-        self.stage = Gtk.Overlay()   # Byte walks around on this, over the window and under the toasts
-        self.stage.set_child(tv)
+        # The app is drawn on a card; around it the window can have a see-through border that Byte steps
+        # out into (☰ → Byte can leave the window). Clicks on the empty border go to what's behind.
+        self.card = Gtk.Box(css_classes=["tl-card"], overflow=Gtk.Overflow.HIDDEN)
+        tv.set_hexpand(True)
+        self.card.append(tv)
+        self.stage = Gtk.Overlay(css_classes=["tl-stage"])   # Byte walks on this, over the app and under the toasts
+        self.stage.set_child(self.card)
         self.cat = Cat(self.stage, self._pet)
         self.cat.list_box = self._list_box
+        self.cat.on_moved = self._update_input_region
         self.cat.set_badge_count(len(self._badges()))
         self.cat.set_visible(self.cat_on)
         if self.cat_on:
@@ -1556,6 +1971,11 @@ class Window(Adw.ApplicationWindow):
         tv.set_content(self.stack)
         self.toasts.set_child(self.stage)
         self.set_content(self.toasts)
+        self._apply_outside()
+        self.set_default_size(800 + 2 * self._gutter, 680)
+        for prop in ("maximized", "fullscreened"):        # full screen or maximized: no border then
+            self.connect(f"notify::{prop}", lambda *_: self._apply_outside())
+        self.connect("notify::is-active", lambda *_: self._update_input_region(force=True))
 
         keys = Gtk.ShortcutController(scope=Gtk.ShortcutScope.GLOBAL)
         for trig, cb in (("<Control>n", lambda *_: self._edit(None) or True),
@@ -1567,13 +1987,76 @@ class Window(Adw.ApplicationWindow):
         self.add_controller(keys)
 
         css = Gtk.CssProvider()
-        css.load_from_string(APP_CSS)
+        css.load_from_string(app_css())
         Gtk.StyleContext.add_provider_for_display(self.get_display(), css,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self._rebuild()
+        if not self.sessions:                       # an empty list: Byte offers to help with the first one
+            GLib.timeout_add(1500, lambda: self._offer(
+                "get-started", "It looks like you're just getting started. Shall I open Add for you?",
+                [("Yes, please", lambda: self._edit(None))]) and False)
         adj = self._vadjustment()
         if adj:                                     # the row Byte sat beside scrolls away: it moves
             adj.connect("value-changed", lambda *_: self.cat.on_scroll())
+
+    # ---------- Byte outside the window ----------
+    def _gutter_wanted(self):
+        """How wide the see-through border on each side should be: room for Byte when it's shown and
+        allowed out, none when maximized or full screen (there's nowhere to go then). (Tiling can't be
+        told apart: COSMIC reports a floating window as tiled on all four edges.)"""
+        if not (self.outside_on and self.cat_on) or self.is_maximized() or self.is_fullscreen():
+            return 0
+        return Cat.SIZE + 16
+
+    def _apply_outside(self):
+        """Put the border on or take it off. An open window keeps its size (the desktop decides that on
+        Wayland), so the app gets narrower or wider by the border; a new window makes room for it."""
+        g = self._gutter_wanted()
+        if g == self._gutter:
+            return
+        self._gutter = g
+        self.card.set_margin_start(g)
+        self.card.set_margin_end(g)
+        (self.add_css_class if g else self.remove_css_class)("tl-outside")
+        self.cat.inset = g
+        if self.cat.spot == "beside" and not g:      # it was out in the border: back in
+            self.cat.wander("floor")
+        self._update_input_region()
+
+    def do_size_allocate(self, width, height, baseline):
+        Adw.ApplicationWindow.do_size_allocate(self, width, height, baseline)
+        self._update_input_region(force=True)       # GTK may have just set its own
+
+    def _update_input_region(self, force=False):
+        """With the border on, only the app, the cat (and its bubble while it asks something) take
+        clicks; the rest of the border lets them through to whatever is behind the window. Sent only
+        when it changes, unless force."""
+        surface = self.get_surface()
+        if surface is None or not HAVE_CAIRO:
+            return
+        import cairo
+        if not self._gutter:
+            if self._region_set:                      # back to the whole window
+                self._region_set, self._region_rects = False, None
+                surface.set_input_region(cairo.Region(cairo.RectangleInt(-1, -1, 1 << 15, 1 << 15)))
+                self.queue_allocate()                 # GTK puts its own back (shadow and resize edges)
+            return
+        ok, card = self.card.compute_bounds(self)
+        ok2, stage = self.stage.compute_bounds(self)
+        if not (ok and ok2):
+            return
+        rects = click_rects((card.get_x(), card.get_y(), card.get_width(), card.get_height()),
+                            (stage.get_x(), stage.get_y()), self.get_surface_transform(),
+                            (self.cat.x, self.cat.y) if self.cat_on else None, Cat.SIZE,
+                            self.cat.bubble_box if self.cat_on and self.cat.asking else None)
+        if rects == self._region_rects and not force:
+            return
+        self._region_rects = rects
+        region = cairo.Region(cairo.RectangleInt(*rects[0]))
+        for r in rects[1:]:
+            region.union(cairo.RectangleInt(*r))
+        surface.set_input_region(region)
+        self._region_set = True
 
     def _list_box(self):
         """Where the list is on the window, as (x, y, width, height), for Byte's margin spots."""
@@ -1792,7 +2275,7 @@ class Window(Adw.ApplicationWindow):
         save_setting("badges", got)
         emoji, name = next((b[1], b[2]) for b in BADGES if b[0] == bid)
         self.cat.set_badge_count(len(got))
-        self._say("hop", f"{emoji} New badge: {name}! That's {len(got)} of {len(BADGES)}.")
+        self._say("badge", f"{emoji} New badge: {name}! That's {len(got)} of {len(BADGES)}.")
         self._later_sound("badge")
         return True
 
@@ -1868,12 +2351,59 @@ class Window(Adw.ApplicationWindow):
         return False
 
     def _pet(self):
-        """Clicking the cat: a little chirp, a wink and its next line. Ten times earns a secret badge."""
-        self._sound("chirp")
-        self.cat.play("wink", 0.6)
-        self.cat.next_line()
-        if self._bump("pets") >= 10:
-            self._award("curious")
+        """Poking the cat: it wobbles and meows, then asks what it can do (a tip, a joke, your badges).
+        A few pokes in a row and it purrs instead. Ten pokes in all earn a secret badge."""
+        now = time.monotonic()
+        self._pokes = [t for t in getattr(self, "_pokes", []) if now - t < 6] + [now]
+        self.cat.play("wobble", 0.7)
+        if self._bump("pets") >= 10 and self._award("curious"):
+            return
+        if len(self._pokes) >= 3:                      # pet, pet, pet: purr
+            self._pokes = []
+            self.cat.close_question()
+            self._sound("purr")
+            self.cat.play("love", 2.0)
+            self.cat.say(self.cat.rng.choice(["Purrrr…", "Mmm, purrrr.", "Prrrrr. That's the spot."]), 4)
+            return
+        self._sound("meow")
+        GLib.timeout_add(250, lambda: self.cat.play("meow", 0.8) and False)   # after the wobble, in time with the mew
+        name = self.cat.rng.choice(["Hi!", "Mrrp?", "Oh, hello!", "Meow!"])
+
+        def tip():
+            self._sound("babble")
+            self.cat.say(cat_line("tip", self.cat.now(), int(now)), 14, typed=True)
+
+        def joke():
+            self._sound("babble")
+            self.cat.say(cat_line("joke", self.cat.now(), int(now)) if self.cat.rng.random() < 0.5
+                         else self.cat.rng.choice(CAT_JOKES), 12, typed=True)
+        self.cat.ask(f"{name} What can I do for you?", [("A tip", tip), ("A joke", joke),
+                                                         ("My badges", self._show_badges)])
+
+    def _offer(self, key, text, choices):
+        """A Clippy-style offer: the cat asks, with buttons, at the moment it's useful. Off with Tips.
+        "Not now" holds it back for the rest of this session; "Don't ask again" for good. Without the
+        cat it's a toast with the first choice as its button. Returns True if it was shown."""
+        if not self.tips_on or key in getattr(self, "_declined", set()):
+            return False
+        seen = load_settings().get("tips_seen", [])
+        if key in (seen if isinstance(seen, list) else []):
+            return False
+        if not self.cat_on:
+            label, cb = choices[0]
+            save_setting("tips_seen", list(seen) + [key])
+            t = Adw.Toast(title=GLib.markup_escape_text(text), timeout=8, button_label=label)
+            t.connect("button-clicked", lambda *_: cb())
+            self.toasts.add_toast(t)
+            self._later_sound("tip")
+            return True
+        self._declined = getattr(self, "_declined", set())
+        self.cat.play("look", 0.8)
+        self.cat.ask(text, choices + [("Not now", lambda: self._declined.add(key)),
+                                      ("Don't ask again", lambda: save_setting(
+                                          "tips_seen", list(load_settings().get("tips_seen", [])) + [key]))])
+        self._later_sound("tip")
+        return True
 
     def _switch_changed(self, act, value):
         act.set_state(value)
@@ -1894,10 +2424,16 @@ class Window(Adw.ApplicationWindow):
             self._watch_prev = None
             if on and self.cat_on:
                 self.cat.react("look", "I'll keep an eye on the kitty tabs I open for you.")
+        elif name == "outside":
+            self.outside_on = on
+            self._apply_outside()
+            if on and self.cat_on and self._gutter:   # once the window has grown: show it off
+                GLib.timeout_add(400, lambda: self.cat.wander("beside") and False)
         else:
             self.cat_on = on
             self.cat.set_visible(on)
             (self.cat.start if on else self.cat.stop)()
+            self._apply_outside()
 
     def _index(self, entry):
         return next((k for k, s in enumerate(self.sessions) if s is entry), None)
@@ -2074,7 +2610,8 @@ class Window(Adw.ApplicationWindow):
         (self.checked.add if on else self.checked.discard)(i)
         self._update_open_label()
         if on and len(self.checked) == 2 and not self._quiet:
-            self._tip("tick", "ticked rows open together: the top button, or Ctrl+Enter.")
+            self._offer("tick", "It looks like you're picking a few. Open them together? (Ctrl+Enter)",
+                        [("Open them", self._open_many)])
 
     def _toggle_all(self, _btn):
         on = len(self.checked) < len(self.sessions)
@@ -2126,9 +2663,9 @@ class Window(Adw.ApplicationWindow):
         awarded = self._count_opens([s])
         self._sound("open")
         self._visit(s)
-        if s.get("opens", 0) >= 3 and not s.get("star") and not awarded and self._tip(
-                "suggest-star", f"you open {name} a lot. Star it to keep it at the top?",
-                button="Star it", on_click=lambda: self._set_star(s, True)):
+        if s.get("opens", 0) >= 3 and not s.get("star") and not awarded and self._offer(
+                "suggest-star", f"You open {name} a lot. Make it a favorite, so it stays at the top?",
+                [("Star it", lambda: self._set_star(s, True))]):
             return
         if not awarded:
             self._say("wave", self.cat.rng.choice([f"Opened {name}. Off you go!", f"Opened {name}. Have fun!",
@@ -2307,7 +2844,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     DRY_RUN = "--dry-run" in args
     if "--sounds" in args:   # hear the launcher's sounds, one after another
-        for name in SOUNDS:
+        for name in list(SOUNDS) + list(SOUND_MAKERS):
             print(f"{name}: {sound_file(name)}")
             play_sound(name)
             time.sleep(0.8)
